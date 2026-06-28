@@ -374,6 +374,30 @@ tr:last-child td { border-bottom: none; }
 
 
 
+
+/* ════ FAVORITES / RECENTS ════ */
+.fav-section { margin-bottom: 14px; }
+.fav-title { font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 1px; color: var(--muted); margin-bottom: 8px;
+  display:flex; justify-content:space-between; align-items:center; }
+.fav-clear { font-size: 0.68rem; color: var(--accent2); cursor:pointer; font-weight:600; }
+.fav-chips { display:flex; flex-wrap:wrap; gap:6px; }
+.fav-chip {
+  background: #f0eeff; border: 1.5px solid #c4b5fd;
+  border-radius: 10px; padding: 8px 10px;
+  display:flex; align-items:center; gap:8px; cursor:pointer;
+  transition: all 0.18s; min-width: 0;
+}
+.fav-chip:active { background: #ede9fe; border-color: var(--accent); }
+.fav-chip-info { flex:1; min-width:0; }
+.fav-chip-name { font-size:0.78rem; font-weight:700; color:var(--text);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fav-chip-cal { font-size:0.68rem; color:var(--muted); margin-top:1px; }
+.fav-chip-add { background:var(--accent); color:#fff; border:none;
+  border-radius:6px; padding:4px 10px; font-size:0.72rem; font-weight:700;
+  cursor:pointer; font-family:inherit; white-space:nowrap; }
+.fav-empty { font-size:0.78rem; color:var(--muted); font-style:italic; padding:4px 0; }
+
 /* ════ EDIT FOOD MODAL ════ */
 .modal-overlay {
   position: fixed; inset: 0; z-index: 9000;
@@ -773,6 +797,18 @@ tr:last-child td { border-bottom: none; }
       </div>
     </div>
 
+
+    <!-- FAVORITES / RECENTS -->
+    <div class="card fav-section">
+      <div class="fav-title">
+        ⭐ Quick Add — Recent Foods
+        <span class="fav-clear" onclick="clearFavorites()">Clear all</span>
+      </div>
+      <div id="fav-chips-wrap">
+        <div class="fav-empty">Foods you add will appear here for quick re-use</div>
+      </div>
+    </div>
+
     <div class="card">
       <div class="card-title"><span class="dot" style="background:linear-gradient(135deg,#5046e4,#e8365d)"></span>🤖 AI Calorie Lookup</div>
       <div style="font-size:0.75rem;color:var(--muted);margin-bottom:10px">Type dish + quantity (e.g. "thepla 2") → tap ➕ Add — one tap!</div>
@@ -1013,38 +1049,39 @@ const SECRET  = '977381'; // same as PIN
 async function gasCall(params) {
   return new Promise((resolve) => {
     try {
-      const p = Object.assign({ secret: SECRET }, params);
       const cbName = 'cb_' + Date.now();
+      // Always include secret and callback
+      const p = Object.assign({ secret: SECRET, callback: cbName }, params);
+      // Properly encode every value — handles spaces, special chars, emojis
       const qs = Object.keys(p).map(k =>
-        encodeURIComponent(k) + '=' + encodeURIComponent(p[k])
+        encodeURIComponent(k) + '=' + encodeURIComponent(String(p[k]||''))
       ).join('&');
-      const url = GAS_URL + '?' + qs + '&callback=' + cbName;
+      const url = GAS_URL + '?' + qs;
 
-      // JSONP — works on iOS Safari, bypasses CORS & redirect issues
       window[cbName] = function(data) {
         delete window[cbName];
-        document.getElementById('gas-script-tag') &&
-          document.getElementById('gas-script-tag').remove();
+        const s = document.getElementById(cbName);
+        if (s) s.remove();
         resolve(data);
       };
 
       const script = document.createElement('script');
-      script.id = 'gas-script-tag';
+      script.id = cbName;
       script.src = url;
       script.onerror = function() {
         delete window[cbName];
         script.remove();
-        resolve({ ok: false, error: 'Load failed' });
+        resolve({ ok: false, error: 'Script load failed' });
       };
 
-      // Timeout after 10 seconds
       setTimeout(() => {
         if (window[cbName]) {
           delete window[cbName];
-          script.remove();
-          resolve({ ok: false, error: 'Timeout' });
+          const s = document.getElementById(cbName);
+          if (s) s.remove();
+          resolve({ ok: false, error: 'Timeout — check connection' });
         }
-      }, 10000);
+      }, 12000);
 
       document.head.appendChild(script);
     } catch(e) {
@@ -1143,7 +1180,7 @@ function showScreen(name) {
   if (navEl) navEl.classList.add('active');
   window.scrollTo(0,0);
   if (name==='dashboard') refreshDashboard();
-  if (name==='food') renderFoodLog();
+  if (name==='food') { renderFoodLog(); renderFavorites(); }
   if (name==='workout') { renderWorkoutLog(); if (!workoutCoachLoaded) loadWorkoutCoach(); }
   if (name==='progress') renderProgress();
 }
@@ -1309,6 +1346,7 @@ async function addFood() {
   const notes = document.getElementById('food-notes').value.trim();
   if (!name||!cal) { alert('Enter food name and calories.'); return; }
 
+  saveFavorite({name,serving,cal,protein:pro,carbs:carb,fat});
   showSync('⏳ Saving...', '#d97706');
   const res = await gasCall({action:'save_food',date,meal,name,serving,cal,pro,carb,fat,notes});
   if (!res.ok) { toast('❌ Save failed — check connection','#e8365d'); showSync('❌ Sync failed','#e8365d'); return; }
@@ -1454,20 +1492,30 @@ async function addDirectFromAI(idx) {
   const btns=document.querySelectorAll('.btn-add-direct');
   if (btns[idx]) { btns[idx].textContent='⏳'; btns[idx].disabled=true; }
   showSync('⏳ Saving...','#d97706');
-  const res=await gasCall({action:'save_food',date,meal,name:item.name,serving:item.serving,
-    cal:item.cal,pro:item.protein,carb:item.carbs,fat:item.fat,notes:''});
+
+  // Save to favorites/recents for quick re-use
+  saveFavorite({name:item.name, serving:item.serving, cal:item.cal,
+    protein:item.protein, carbs:item.carbs, fat:item.fat});
+
+  const res=await gasCall({
+    action:'save_food', date, meal,
+    name:item.name, serving:item.serving||'',
+    cal:item.cal, pro:item.protein, carb:item.carbs, fat:item.fat, notes:''
+  });
   if (res.ok) {
     const entries=load('food');
-    entries.push({id:res.id||Date.now().toString(),date,meal,name:item.name,serving:item.serving,
+    entries.push({id:res.id||Date.now().toString(),date,meal,
+      name:item.name,serving:item.serving,
       cal:item.cal,pro:item.protein,carb:item.carbs,fat:item.fat,notes:''});
     save('food',entries);
     if (btns[idx]) { btns[idx].textContent='✅ Added'; }
     showSync('✅ Synced','#00a878');
-    toast('✅ '+item.name+' → '+meal,'#00a878');
+    toast('✅ '+item.name+' added to '+meal,'#00a878');
     renderFoodLog();
   } else {
-    if (btns[idx]) { btns[idx].textContent='❌ Failed'; }
-    showSync('❌ Sync failed','#e8365d');
+    if (btns[idx]) { btns[idx].textContent='❌ Retry'; btns[idx].disabled=false; }
+    showSync('❌ Failed: '+res.error,'#e8365d');
+    toast('❌ Save failed — tap Retry','#e8365d');
   }
 }
 
@@ -1921,6 +1969,96 @@ function quickLogStrength(idx) {
   renderWorkoutLog();
 }
 
+
+
+// ══════════════════════════════════════
+//  FAVORITES / RECENTS
+// ══════════════════════════════════════
+const MAX_FAVS = 20;
+
+function saveFavorite(item) {
+  let favs = loadFavs();
+  // Remove duplicate by name
+  favs = favs.filter(f => f.name.toLowerCase() !== item.name.toLowerCase());
+  // Add to front
+  favs.unshift({
+    name: item.name, serving: item.serving||'',
+    cal: item.cal, protein: item.protein||item.pro||0,
+    carbs: item.carbs||item.carb||0, fat: item.fat||0
+  });
+  // Keep max 20
+  if (favs.length > MAX_FAVS) favs = favs.slice(0, MAX_FAVS);
+  localStorage.setItem('favorites', JSON.stringify(favs));
+  renderFavorites();
+}
+
+function loadFavs() {
+  try { return JSON.parse(localStorage.getItem('favorites') || '[]'); } catch { return []; }
+}
+
+function clearFavorites() {
+  if (confirm('Clear all recent foods?')) {
+    localStorage.removeItem('favorites');
+    renderFavorites();
+  }
+}
+
+function renderFavorites() {
+  const wrap = document.getElementById('fav-chips-wrap');
+  if (!wrap) return;
+  const favs = loadFavs();
+  if (!favs.length) {
+    wrap.innerHTML = '<div class="fav-empty">Foods you add will appear here for quick re-use ⭐</div>';
+    return;
+  }
+  wrap.innerHTML = favs.map((f, i) => `
+    <div class="fav-chips">
+    </div>`).join('');
+
+  // Build as single wrap
+  wrap.innerHTML = '<div class="fav-chips">' + favs.map((f, i) => `
+    <div class="fav-chip">
+      <div class="fav-chip-info">
+        <div class="fav-chip-name">${f.name}</div>
+        <div class="fav-chip-cal">${f.cal} kcal · ${f.serving||''}</div>
+      </div>
+      <button class="fav-chip-add" onclick="addFavorite(${i})">➕</button>
+    </div>`).join('') + '</div>';
+}
+
+async function addFavorite(idx) {
+  const favs = loadFavs();
+  const f = favs[idx];
+  if (!f) return;
+  const meal = document.getElementById('food-meal').value;
+  const date = document.getElementById('food-date').value || TODAY;
+
+  const btn = document.querySelectorAll('.fav-chip-add')[idx];
+  if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
+  showSync('⏳ Saving...', '#d97706');
+
+  const res = await gasCall({
+    action: 'save_food', date, meal,
+    name: f.name, serving: f.serving||'',
+    cal: f.cal, pro: f.protein||0, carb: f.carbs||0, fat: f.fat||0, notes: 'from favorites'
+  });
+
+  if (res.ok) {
+    const entries = load('food');
+    entries.push({id: res.id||Date.now().toString(), date, meal,
+      name:f.name, serving:f.serving||'', cal:f.cal,
+      pro:f.protein||0, carb:f.carbs||0, fat:f.fat||0, notes:'from favorites'});
+    save('food', entries);
+    if (btn) { btn.textContent = '✅'; setTimeout(()=>{ btn.textContent='➕'; btn.disabled=false; }, 2000); }
+    showSync('✅ Synced', '#00a878');
+    toast('✅ ' + f.name + ' added to ' + meal, '#00a878');
+    renderFoodLog();
+  } else {
+    if (btn) { btn.textContent = '❌'; btn.disabled = false; }
+    showSync('❌ Failed', '#e8365d');
+    toast('❌ Save failed', '#e8365d');
+  }
+}
 
 // ══════════════════════════════════════
 //  EDIT FOOD MODAL
