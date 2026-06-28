@@ -1141,6 +1141,16 @@ const CAL_GOAL = 1500;
 const PRO_GOAL = 120;
 const TODAY = new Date().toISOString().slice(0,10);
 
+// Normalize any date format to YYYY-MM-DD
+function normalizeDate(d) {
+  if (!d) return '';
+  if (typeof d === 'string' && d.match(/^\d{4}-\d{2}-\d{2}$/)) return d;
+  try {
+    const dt = new Date(d);
+    return dt.toISOString().slice(0,10);
+  } catch(e) { return String(d); }
+}
+
 // ══════════════════════════════════════
 //  STORAGE — localStorage as cache
 // ══════════════════════════════════════
@@ -1255,14 +1265,20 @@ async function refreshDashboard() {
   ]);
 
   // ── Save fresh data to local cache ──────────────────────────────
-  if (wRes.ok && wRes.entries)  save('weights', wRes.entries);
+  if (wRes.ok && wRes.entries)  {
+    const wNorm = wRes.entries.map(e => ({...e, date: normalizeDate(e.date)}));
+    save('weights', wNorm);
+  }
   if (fRes.ok && fRes.entries)  {
-    const other = load('food').filter(e=>e.date!==TODAY);
-    save('food', other.concat(fRes.entries));
+    // Normalize dates from Sheets
+    const normalized = fRes.entries.map(e => ({...e, date: normalizeDate(e.date)}));
+    const other = load('food').filter(e=>normalizeDate(e.date)!==TODAY);
+    save('food', other.concat(normalized));
   }
   if (wkRes.ok && wkRes.entries) {
-    save('cardio',   wkRes.entries.filter(e=>e.type==='cardio'));
-    save('strength', wkRes.entries.filter(e=>e.type==='strength'));
+    const wkNorm = wkRes.entries.map(e => ({...e, date: normalizeDate(e.date)}));
+    save('cardio',   wkNorm.filter(e=>e.type==='cardio'));
+    save('strength', wkNorm.filter(e=>e.type==='strength'));
   }
   if (waterRes.ok && waterRes.cups !== undefined) {
     localStorage.setItem('water_'+TODAY, waterRes.cups.toString());
@@ -1287,9 +1303,9 @@ async function refreshDashboard() {
     : '🎯 Journey Day '+dayNum;
 
   // ── Calories ────────────────────────────────────────────────────
-  const todayFood = load('food').filter(f=>f.date===TODAY);
+  const todayFood = load('food').filter(f=>normalizeDate(f.date)===TODAY);
   const eaten = Math.round(todayFood.reduce((s,f)=>s+(Number(f.cal)||0),0));
-  const todayCardio = load('cardio').filter(c=>c.date===TODAY);
+  const todayCardio = load('cardio').filter(c=>normalizeDate(c.date)===TODAY);
   const burned = Math.round(todayCardio.reduce((s,c)=>s+(Number(c.cal)||0),0));
   const netGoal = CAL_GOAL + burned;
   const remain = Math.max(0, netGoal - eaten);
@@ -1348,7 +1364,7 @@ async function loadAICoach() {
   const weights = load('weights');
   const cw = weights.length ? weights[weights.length-1].weight : START_WEIGHT;
   const lost = (START_WEIGHT - cw).toFixed(1);
-  const todayFood = load('food').filter(f=>f.date===TODAY);
+  const todayFood = load('food').filter(f=>normalizeDate(f.date)===TODAY);
   const todayCals = todayFood.reduce((s,f)=>s+f.cal,0);
   const totalWorkouts = load('cardio').length + load('strength').length;
   const startDate = new Date('2026-06-28');
@@ -1442,14 +1458,15 @@ async function renderFoodLog() {
   const res = await gasCall({action:'get_food', date:date});
   if (res.ok && res.entries) {
     // Merge into local cache
-    const all = load('food').filter(e=>e.date!==date);
-    const merged = all.concat(res.entries);
+    const normalized = res.entries.map(e => ({...e, date: normalizeDate(e.date)}));
+    const all = load('food').filter(e=>normalizeDate(e.date)!==date);
+    const merged = all.concat(normalized);
     save('food', merged);
     showSync('✅ Synced','#00a878');
   } else {
     showSync('⚠️ Offline — showing cached','#d97706');
   }
-  const entries = load('food').filter(e=>e.date===date);
+  const entries = load('food').filter(e=>normalizeDate(e.date)===date);
   const display = document.getElementById('food-log-display');
   if (!display) return;
   if (!entries.length) { display.innerHTML='<div class="empty-log">Nothing logged yet.<br>Use AI Lookup above! 🥗</div>'; updateMacros(0,0,0,0); return; }
