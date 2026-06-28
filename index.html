@@ -375,6 +375,32 @@ tr:last-child td { border-bottom: none; }
 
 
 
+
+/* ════ MY FOODS DATABASE ════ */
+.myfoods-search-wrap { display:flex; gap:8px; margin-bottom:10px; }
+.myfoods-search-wrap input { flex:1; }
+.myfoods-results { display:flex; flex-direction:column; gap:6px; max-height:320px; overflow-y:auto; }
+.myfoods-item {
+  background:#f8f7ff; border:1.5px solid #e0dbff;
+  border-radius:10px; padding:10px 12px;
+  display:flex; align-items:center; gap:10px;
+}
+.myfoods-item:active { border-color:var(--accent); }
+.myfoods-item-info { flex:1; min-width:0; }
+.myfoods-item-name { font-size:0.83rem; font-weight:700; color:var(--text);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.myfoods-item-sub { font-size:0.7rem; color:var(--muted); margin-top:2px; }
+.myfoods-item-cal { font-size:0.9rem; font-weight:800; color:var(--accent2); white-space:nowrap; margin-right:4px; }
+.myfoods-add-btn {
+  background:var(--accent); color:#fff; border:none;
+  border-radius:8px; padding:7px 12px; font-size:0.75rem;
+  font-weight:700; cursor:pointer; font-family:inherit; white-space:nowrap;
+  transition:all 0.2s; min-height:34px;
+}
+.myfoods-add-btn:disabled { background:var(--green); }
+.myfoods-empty { text-align:center; color:var(--muted); font-size:0.8rem; padding:20px 0; }
+.myfoods-count { font-size:0.68rem; color:var(--muted); margin-bottom:8px; }
+
 /* ════ FAVORITES / RECENTS ════ */
 .fav-section { margin-bottom: 14px; }
 .fav-title { font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
@@ -798,15 +824,32 @@ tr:last-child td { border-bottom: none; }
     </div>
 
 
-    <!-- FAVORITES / RECENTS -->
-    <div class="card fav-section">
+    <!-- MY FOODS DATABASE -->
+    <div class="card">
+      <div class="card-title">
+        <span class="dot" style="background:#a78bfa"></span>
+        ⭐ My Foods — Search Your History
+      </div>
+      <div style="font-size:0.75rem;color:var(--muted);margin-bottom:10px">
+        Every food you ever add is saved here. Search by name — no AI credit used!
+      </div>
+      <div class="myfoods-search-wrap">
+        <input type="text" id="myfoods-search" placeholder="Search chai, roti, Olive Garden chicken..."
+          oninput="searchMyFoods()" onkeydown="if(event.key==='Enter') searchMyFoods()">
+      </div>
+      <div class="myfoods-count" id="myfoods-count"></div>
+      <div class="myfoods-results" id="myfoods-results">
+        <div class="myfoods-empty">Your saved foods will appear here.<br>Add something via AI Lookup below first! 🍽️</div>
+      </div>
+    </div>
+
+    <!-- RECENT QUICK-ADD CHIPS -->
+    <div class="card fav-section" id="recents-card" style="display:none">
       <div class="fav-title">
-        ⭐ Quick Add — Recent Foods
-        <span class="fav-clear" onclick="clearFavorites()">Clear all</span>
+        ⚡ Recent — Quick Add
+        <span class="fav-clear" onclick="clearFavorites()">Clear</span>
       </div>
-      <div id="fav-chips-wrap">
-        <div class="fav-empty">Foods you add will appear here for quick re-use</div>
-      </div>
+      <div id="fav-chips-wrap"></div>
     </div>
 
     <div class="card">
@@ -1180,7 +1223,7 @@ function showScreen(name) {
   if (navEl) navEl.classList.add('active');
   window.scrollTo(0,0);
   if (name==='dashboard') refreshDashboard();
-  if (name==='food') { renderFoodLog(); renderFavorites(); }
+  if (name==='food') { renderFoodLog(); renderFavorites(); searchMyFoods(); }
   if (name==='workout') { renderWorkoutLog(); if (!workoutCoachLoaded) loadWorkoutCoach(); }
   if (name==='progress') renderProgress();
 }
@@ -1972,23 +2015,128 @@ function quickLogStrength(idx) {
 
 
 // ══════════════════════════════════════
-//  FAVORITES / RECENTS
+//  MY FOODS DATABASE + RECENTS
 // ══════════════════════════════════════
-const MAX_FAVS = 20;
+const MAX_RECENTS = 8;
 
-function saveFavorite(item) {
-  let favs = loadFavs();
-  // Remove duplicate by name
-  favs = favs.filter(f => f.name.toLowerCase() !== item.name.toLowerCase());
-  // Add to front
-  favs.unshift({
-    name: item.name, serving: item.serving||'',
-    cal: item.cal, protein: item.protein||item.pro||0,
-    carbs: item.carbs||item.carb||0, fat: item.fat||0
+// ── My Foods DB — permanent, searchable ──────────────────────────
+function loadMyFoods() {
+  try { return JSON.parse(localStorage.getItem('myfoods') || '[]'); } catch { return []; }
+}
+
+function saveToMyFoods(item) {
+  let db = loadMyFoods();
+  const key = item.name.toLowerCase().trim();
+  // Update if exists, else add
+  const idx = db.findIndex(f => f.name.toLowerCase().trim() === key);
+  const entry = {
+    name: item.name,
+    serving: item.serving || '',
+    cal: Number(item.cal) || 0,
+    protein: Number(item.protein || item.pro) || 0,
+    carbs: Number(item.carbs || item.carb) || 0,
+    fat: Number(item.fat) || 0,
+    lastUsed: TODAY,
+    count: idx >= 0 ? (db[idx].count || 1) + 1 : 1
+  };
+  if (idx >= 0) db[idx] = entry;
+  else db.unshift(entry);
+  localStorage.setItem('myfoods', JSON.stringify(db));
+}
+
+function searchMyFoods() {
+  const query = (document.getElementById('myfoods-search').value || '').toLowerCase().trim();
+  const db = loadMyFoods();
+  const countEl = document.getElementById('myfoods-count');
+  const resultsEl = document.getElementById('myfoods-results');
+  if (!resultsEl) return;
+
+  if (!db.length) {
+    countEl.textContent = '';
+    resultsEl.innerHTML = '<div class="myfoods-empty">No saved foods yet.<br>Add something via AI Lookup below! 🍽️</div>';
+    return;
+  }
+
+  // Filter by query or show all sorted by lastUsed
+  let results = query
+    ? db.filter(f => f.name.toLowerCase().includes(query))
+    : [...db].sort((a,b) => (b.lastUsed||'').localeCompare(a.lastUsed||''));
+
+  countEl.textContent = query
+    ? results.length + ' result' + (results.length !== 1 ? 's' : '') + ' for "' + query + '"'
+    : db.length + ' saved food' + (db.length !== 1 ? 's' : '') + ' · most recent first';
+
+  if (!results.length) {
+    resultsEl.innerHTML = '<div class="myfoods-empty">No match for "' + query + '"<br>Try AI Lookup below to add it first!</div>';
+    return;
+  }
+
+  resultsEl.innerHTML = results.map((f, i) => `
+    <div class="myfoods-item">
+      <div class="myfoods-item-info">
+        <div class="myfoods-item-name">${f.name}</div>
+        <div class="myfoods-item-sub">${f.serving ? f.serving + ' · ' : ''}P:${f.protein}g · C:${f.carbs}g · F:${f.fat}g${f.count > 1 ? ' · used ' + f.count + 'x' : ''}</div>
+      </div>
+      <div class="myfoods-item-cal">${f.cal}</div>
+      <button class="myfoods-add-btn" onclick="addFromMyFoods('${f.name.replace(/'/g,"\'")}')">➕ Add</button>
+    </div>`).join('');
+}
+
+async function addFromMyFoods(name) {
+  const db = loadMyFoods();
+  const f = db.find(item => item.name === name);
+  if (!f) return;
+
+  const meal = document.getElementById('food-meal').value;
+  const date = document.getElementById('food-date').value || TODAY;
+
+  // Find and disable the button
+  const allBtns = document.querySelectorAll('.myfoods-add-btn');
+  let targetBtn = null;
+  allBtns.forEach(b => { if (b.onclick && b.getAttribute('onclick') && b.getAttribute('onclick').includes(name.substring(0,10))) targetBtn = b; });
+  if (targetBtn) { targetBtn.textContent = '⏳'; targetBtn.disabled = true; }
+
+  showSync('⏳ Saving...', '#d97706');
+  const res = await gasCall({
+    action:'save_food', date, meal,
+    name:f.name, serving:f.serving||'',
+    cal:f.cal, pro:f.protein||0, carb:f.carbs||0, fat:f.fat||0, notes:'from my foods'
   });
-  // Keep max 20
-  if (favs.length > MAX_FAVS) favs = favs.slice(0, MAX_FAVS);
-  localStorage.setItem('favorites', JSON.stringify(favs));
+
+  if (res.ok) {
+    // Update last used + count
+    saveToMyFoods(f);
+    const entries = load('food');
+    entries.push({id:res.id||Date.now().toString(), date, meal,
+      name:f.name, serving:f.serving||'', cal:f.cal,
+      pro:f.protein||0, carb:f.carbs||0, fat:f.fat||0, notes:'from my foods'});
+    save('food', entries);
+    if (targetBtn) { targetBtn.textContent = '✅ Added'; }
+    showSync('✅ Synced', '#00a878');
+    toast('✅ ' + f.name + ' → ' + meal, '#00a878');
+    renderFoodLog();
+  } else {
+    if (targetBtn) { targetBtn.textContent = '❌ Retry'; targetBtn.disabled = false; }
+    showSync('❌ ' + (res.error||'Failed'), '#e8365d');
+    toast('❌ Save failed — tap Retry', '#e8365d');
+  }
+}
+
+// ── Recents (last 8 used — shown as chips) ───────────────────────
+function saveFavorite(item) {
+  // Save to My Foods DB (permanent)
+  saveToMyFoods(item);
+
+  // Also save to recents (quick chips)
+  let recents = loadFavs();
+  recents = recents.filter(f => f.name.toLowerCase() !== item.name.toLowerCase());
+  recents.unshift({
+    name:item.name, serving:item.serving||'',
+    cal:item.cal, protein:Number(item.protein||item.pro)||0,
+    carbs:Number(item.carbs||item.carb)||0, fat:Number(item.fat)||0
+  });
+  if (recents.length > MAX_RECENTS) recents = recents.slice(0, MAX_RECENTS);
+  localStorage.setItem('favorites', JSON.stringify(recents));
   renderFavorites();
 }
 
@@ -1997,7 +2145,7 @@ function loadFavs() {
 }
 
 function clearFavorites() {
-  if (confirm('Clear all recent foods?')) {
+  if (confirm('Clear recent chips? (My Foods history is kept)')) {
     localStorage.removeItem('favorites');
     renderFavorites();
   }
@@ -2005,22 +2153,16 @@ function clearFavorites() {
 
 function renderFavorites() {
   const wrap = document.getElementById('fav-chips-wrap');
+  const card = document.getElementById('recents-card');
   if (!wrap) return;
   const favs = loadFavs();
-  if (!favs.length) {
-    wrap.innerHTML = '<div class="fav-empty">Foods you add will appear here for quick re-use ⭐</div>';
-    return;
-  }
-  wrap.innerHTML = favs.map((f, i) => `
-    <div class="fav-chips">
-    </div>`).join('');
-
-  // Build as single wrap
-  wrap.innerHTML = '<div class="fav-chips">' + favs.map((f, i) => `
+  if (!favs.length) { if (card) card.style.display='none'; return; }
+  if (card) card.style.display='block';
+  wrap.innerHTML = '<div class="fav-chips">' + favs.map((f,i) => `
     <div class="fav-chip">
       <div class="fav-chip-info">
         <div class="fav-chip-name">${f.name}</div>
-        <div class="fav-chip-cal">${f.cal} kcal · ${f.serving||''}</div>
+        <div class="fav-chip-cal">${f.cal} kcal</div>
       </div>
       <button class="fav-chip-add" onclick="addFavorite(${i})">➕</button>
     </div>`).join('') + '</div>';
@@ -2030,34 +2172,7 @@ async function addFavorite(idx) {
   const favs = loadFavs();
   const f = favs[idx];
   if (!f) return;
-  const meal = document.getElementById('food-meal').value;
-  const date = document.getElementById('food-date').value || TODAY;
-
-  const btn = document.querySelectorAll('.fav-chip-add')[idx];
-  if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
-  showSync('⏳ Saving...', '#d97706');
-
-  const res = await gasCall({
-    action: 'save_food', date, meal,
-    name: f.name, serving: f.serving||'',
-    cal: f.cal, pro: f.protein||0, carb: f.carbs||0, fat: f.fat||0, notes: 'from favorites'
-  });
-
-  if (res.ok) {
-    const entries = load('food');
-    entries.push({id: res.id||Date.now().toString(), date, meal,
-      name:f.name, serving:f.serving||'', cal:f.cal,
-      pro:f.protein||0, carb:f.carbs||0, fat:f.fat||0, notes:'from favorites'});
-    save('food', entries);
-    if (btn) { btn.textContent = '✅'; setTimeout(()=>{ btn.textContent='➕'; btn.disabled=false; }, 2000); }
-    showSync('✅ Synced', '#00a878');
-    toast('✅ ' + f.name + ' added to ' + meal, '#00a878');
-    renderFoodLog();
-  } else {
-    if (btn) { btn.textContent = '❌'; btn.disabled = false; }
-    showSync('❌ Failed', '#e8365d');
-    toast('❌ Save failed', '#e8365d');
-  }
+  await addFromMyFoods(f.name);
 }
 
 // ══════════════════════════════════════
