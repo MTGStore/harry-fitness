@@ -1027,54 +1027,41 @@ tr:last-child td { border-bottom: none; }
 //  AI API HELPER — works on GitHub Pages
 // ══════════════════════════════════════
 async function callAI(messages, max_tokens) {
+  // Try multiple proxies — GitHub Pages blocks direct Anthropic calls
+  const proxies = [
+    'https://corsproxy.io/?' + encodeURIComponent('https://api.anthropic.com/v1/messages'),
+    'https://api.allorigins.win/raw?url=' + encodeURIComponent('https://api.anthropic.com/v1/messages'),
+    'https://api.anthropic.com/v1/messages'
+  ];
+
   const body = JSON.stringify({
     model: 'claude-sonnet-4-6',
     max_tokens: max_tokens || 1000,
     messages: messages
   });
 
-  // Try direct first, fall back to proxy
-  const endpoints = [
-    {
-      url: 'https://api.anthropic.com/v1/messages',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      direct: true
-    },
-    {
-      url: 'https://corsproxy.io/?' + encodeURIComponent('https://api.anthropic.com/v1/messages'),
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_KEY,
-        'anthropic-version': '2023-06-01'
-      },
-      direct: false
-    }
-  ];
-
-  let lastError = null;
-  for (const endpoint of endpoints) {
+  for (const url of proxies) {
     try {
-      const res = await fetch(endpoint.url, {
+      const res = await fetch(url, {
         method: 'POST',
-        headers: endpoint.headers,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': ANTHROPIC_KEY,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
         body: body
       });
+      if (!res.ok) continue;
       const data = await res.json();
-      if (data.error) throw new Error('API error: ' + data.error.message);
-      const text = data.content.map(b => b.text || '').join('').trim();
-      return text;
+      if (data.error) throw new Error(data.error.message);
+      return data.content.map(b => b.text || '').join('').trim();
     } catch(e) {
-      lastError = e;
-      console.warn('Endpoint failed:', endpoint.url, e.message);
+      console.warn('Proxy failed:', url, e.message);
       continue;
     }
   }
-  throw lastError || new Error('All endpoints failed');
+  throw new Error('All AI endpoints failed — check internet connection');
 }
 
 // ══════════════════════════════════════
@@ -1280,8 +1267,10 @@ async function refreshDashboard() {
     save('cardio',   wkNorm.filter(e=>e.type==='cardio'));
     save('strength', wkNorm.filter(e=>e.type==='strength'));
   }
-  if (waterRes.ok && waterRes.cups !== undefined) {
-    localStorage.setItem('water_'+TODAY, waterRes.cups.toString());
+  if (waterRes.ok && waterRes.cups !== null && waterRes.cups !== undefined) {
+    const wc = parseFloat(waterRes.cups) || 0;
+    const localWc = parseFloat(localStorage.getItem('water_'+TODAY) || '0');
+    localStorage.setItem('water_'+TODAY, Math.max(wc, localWc).toString());
   }
 
   showSync('✅ Synced', '#00a878');
@@ -1802,12 +1791,18 @@ const WATER_GOAL_CUPS = 8;
 
 async function loadWater() {
   const key = 'water_' + TODAY;
+  // Show local immediately
+  const localCups = parseFloat(localStorage.getItem(key) || '0');
+  renderWater(localCups);
+  // Then fetch from Sheets and update
   const res = await gasCall({action:'get_water', date:TODAY});
-  if (res.ok && res.cups !== undefined) {
-    localStorage.setItem(key, res.cups.toString());
+  if (res.ok && res.cups !== undefined && res.cups !== null) {
+    const sheetsVal = parseFloat(res.cups) || 0;
+    // Only update if Sheets has more (never overwrite local with less)
+    const finalVal = Math.max(localCups, sheetsVal);
+    localStorage.setItem(key, finalVal.toString());
+    renderWater(finalVal);
   }
-  const cups = parseFloat(localStorage.getItem(key) || '0');
-  renderWater(cups);
 }
 
 function addWater(amount) {
