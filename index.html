@@ -1100,11 +1100,11 @@ async function callAI(messages, max_tokens) {
 // ══════════════════════════════════════
 //  CONSTANTS
 // ══════════════════════════════════════
-const CORRECT_PIN = '977381';
+const CORRECT_PIN = '7381';
 // Key is split to avoid GitHub secret scanning — reassembled at runtime
 // Google Apps Script Web App URL
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbwbNle5ivm-DVcY4Wm6kxRjDShPHRc0HBU_Y5sqiDyZpestnQog3e12SPbPXMxdXx-9/exec';
-const SECRET  = '977381'; // same as PIN
+const SECRET  = '7381'; // same as PIN
 
 // ══════════════════════════════════════
 //  GOOGLE SHEETS API HELPER
@@ -1394,29 +1394,21 @@ async function loadAICoach() {
   const prevW = weights.length>=2 ? weights[weights.length-2].weight : null;
   const lastChange = prevW ? (cw-prevW).toFixed(1) : null;
 
-  const prompt = `You are Harry's personal AI health coach. Harry is 41 years old, 5'4", Gujarati Indian, started his weight loss journey June 28 2026.
-
-CURRENT DATA:
-- Start weight: 193.6 lb | Current: ${cw} lb | Goal: 150-155 lb
-- Lost so far: ${lost} lb | Day ${dayNum} of journey
-- Total workouts done: ${totalWorkouts}
-- Today's calories eaten: ${todayCals} kcal (goal: 1500 kcal)
-- Last weight change: ${lastChange !== null ? lastChange+' lb' : 'not recorded yet'}
-- He eats Gujarati, South Indian, Punjabi food
-
-Write a SHORT warm personal login greeting. Use his name Harry.
-- If he lost weight: celebrate with a fun comparison (e.g. "That's like losing a bag of atta!")
-- If Day 1-3: big encouragement for starting
-- Mention today's calorie situation if relevant
-- Keep it 2-3 sentences max, warm and personal
-
-Then give ONE very specific actionable tip for today (max 15 words).
-
-Return ONLY JSON: {"message":"...","tip":"..."}`;
-
+  // Send data to GAS — GAS builds the prompt internally (avoids URL length limit)
   try {
-    const raw = await callAI([{role:'user',content:prompt}], 400);
-    const parsed = JSON.parse(raw.replace(/```json|```/gi,'').trim());
+    const res = await gasCall({
+      action: 'call_ai',
+      mode: 'coach',
+      weight: cw,
+      lost: lost,
+      day: dayNum,
+      workouts: totalWorkouts,
+      cals: todayCals,
+      change: lastChange || '',
+      max_tokens: 400
+    });
+    if (!res.ok) throw new Error(res.error);
+    const parsed = JSON.parse(res.text.replace(/```json|```/gi,'').trim());
     msgEl.innerHTML = parsed.message;
     tipEl.textContent = '💡 ' + parsed.tip;
     tipEl.style.display = 'block';
@@ -1566,8 +1558,18 @@ Each object must have EXACTLY these fields:
 [{"name":"Food name with serving","serving":"serving description","cal":integer,"protein":decimal,"carbs":decimal,"fat":decimal,"note":"short weight loss tip max 10 words"}]`;
 
   try {
-    const raw=await callAI([{role:'user',content:prompt}], 900);
-    const items=JSON.parse(raw.replace(/```json|```/gi,'').trim());
+    // Send just the query to GAS — GAS builds full prompt and calls Anthropic
+    const res = await gasCall({
+      action: 'call_ai',
+      prompt: query,
+      mode: 'food',
+      max_tokens: 900
+    });
+    
+    if (!res.ok) throw new Error(res.error || 'GAS call failed');
+    
+    const raw = res.text.replace(/```json|```/gi,'').trim();
+    const items = JSON.parse(raw);
     if (!Array.isArray(items)||!items.length) throw new Error('Empty results');
     title.textContent=`✅ ${items.length} option${items.length>1?'s':''} — tap ➕ Add`;
     opts.innerHTML=items.map((item,i)=>`
@@ -1931,59 +1933,21 @@ async function loadWorkoutCoach() {
   const startDate = new Date('2026-06-28');
   const dayNum = Math.max(1, Math.floor((new Date() - startDate) / 86400000) + 1);
 
-  const prompt = `You are a personal trainer and fitness coach for Harry, a 41-year-old man, 5'4", ${cw} lb, who started his weight loss journey ${dayNum} days ago (June 28, 2026). Goal: lose 40+ lb to reach 150-155 lb. He is a beginner at the gym.
-
-HIS GYM HISTORY SO FAR:
-- Recent exercises done: ${recentExercises.length ? recentExercises.join(', ') : 'Just started — Day 1 only'}
-- Last cardio: ${lastCardioDate || 'None yet'}
-- Last strength training: ${lastStrDate || 'None yet'}
-- Today already done: ${alreadyWorkedOut ? 'Yes — ' + [...todayCardio.map(e=>e.machine), ...todayStrength.map(e=>e.name)].join(', ') : 'Nothing yet'}
-- Total lost: ${lost} lb
-
-HARRY'S CONTEXT:
-- Complete beginner, building up slowly
-- Day 1 he did: Treadmill 47min + Chest Press 30lb 3x10 + Lat Pulldown 50lb 3x10
-- Available equipment: standard gym machines (treadmill, chest press, lat pulldown, leg press, shoulder press, cable rows, etc.)
-- Keep it simple, safe, and achievable for a beginner
-
-CREATE TODAY'S WORKOUT PLAN. Respond ONLY in this exact JSON format (no markdown):
-{
-  "intro": "One sentence motivating message for today (mention Day number, be personal)",
-  "cardio": {
-    "machine": "Treadmill",
-    "duration_min": 30,
-    "speed_mph": 2.5,
-    "incline_pct": 4,
-    "est_calories": 200,
-    "instruction": "One sentence on how to do it today"
-  },
-  "exercises": [
-    {
-      "name": "Chest Press",
-      "icon": "💪",
-      "sets": 3,
-      "reps": 10,
-      "weight_lb": 30,
-      "rest_sec": 60,
-      "why": "Builds chest and shoulder strength for posture",
-      "tip": "Keep elbows at 90 degrees, breathe out on push"
-    }
-  ],
-  "tip": "One practical tip for today's session (safety, form, or motivation)",
-  "rest_day": false
-}
-
-Rules:
-- If he worked out yesterday and today is a good rest/cardio-only day, set rest_day=true and still give cardio
-- Rotate muscle groups: if he did chest/back yesterday, do legs/shoulders today
-- Give 3-5 exercises for beginners
-- Keep weights conservative and safe for a 41-year-old beginner
-- Be specific with machine names that exist in a standard gym
-- Exercises array should be empty [] only on full rest days`;
-
   try {
-    const raw = await callAI([{ role: 'user', content: prompt }], 1200);
-    const plan = JSON.parse(raw.replace(/```json|```/gi, '').trim());
+    const wRes = await gasCall({
+      action: 'call_ai',
+      mode: 'workout',
+      weight: cw,
+      lost: lost,
+      day: dayNum,
+      exercises: recentExercises.join(','),
+      lastCardio: lastCardioDate || '',
+      lastStr: lastStrDate || '',
+      doneToday: alreadyWorkedOut ? [...todayCardio.map(e=>e.machine), ...todayStrength.map(e=>e.name)].join(',') : '',
+      max_tokens: 1200
+    });
+    if (!wRes.ok) throw new Error(wRes.error);
+    const plan = JSON.parse(wRes.text.replace(/```json|```/gi, '').trim());
     renderWorkoutPlan(plan);
     workoutCoachLoaded = true;
   } catch(e) {
