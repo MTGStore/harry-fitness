@@ -1011,27 +1011,46 @@ const SECRET  = '977381'; // same as PIN
 //  GOOGLE SHEETS API HELPER
 // ══════════════════════════════════════
 async function gasCall(params) {
-  try {
-    // Build query string — GAS works best with GET params
-    const p = Object.assign({ secret: SECRET }, params);
-    const qs = Object.keys(p).map(k => encodeURIComponent(k) + '=' + encodeURIComponent(p[k])).join('&');
-    const url = GAS_URL + '?' + qs;
+  return new Promise((resolve) => {
+    try {
+      const p = Object.assign({ secret: SECRET }, params);
+      const cbName = 'cb_' + Date.now();
+      const qs = Object.keys(p).map(k =>
+        encodeURIComponent(k) + '=' + encodeURIComponent(p[k])
+      ).join('&');
+      const url = GAS_URL + '?' + qs + '&callback=' + cbName;
 
-    const res = await fetch(url, {
-      method: 'GET',
-      redirect: 'follow'
-    });
-    const text = await res.text();
-    // GAS sometimes returns HTML on error
-    if (text.startsWith('<')) {
-      console.error('GAS returned HTML — auth issue');
-      return { ok: false, error: 'Auth error' };
+      // JSONP — works on iOS Safari, bypasses CORS & redirect issues
+      window[cbName] = function(data) {
+        delete window[cbName];
+        document.getElementById('gas-script-tag') &&
+          document.getElementById('gas-script-tag').remove();
+        resolve(data);
+      };
+
+      const script = document.createElement('script');
+      script.id = 'gas-script-tag';
+      script.src = url;
+      script.onerror = function() {
+        delete window[cbName];
+        script.remove();
+        resolve({ ok: false, error: 'Load failed' });
+      };
+
+      // Timeout after 10 seconds
+      setTimeout(() => {
+        if (window[cbName]) {
+          delete window[cbName];
+          script.remove();
+          resolve({ ok: false, error: 'Timeout' });
+        }
+      }, 10000);
+
+      document.head.appendChild(script);
+    } catch(e) {
+      resolve({ ok: false, error: e.message });
     }
-    return JSON.parse(text);
-  } catch(e) {
-    console.error('GAS error:', e.message);
-    return { ok: false, error: e.message };
-  }
+  });
 }
 
 const _k = ['sk-ant-api03-DWeE-RC','uIu7zV6CpZpW7eNkBI5O5nWjv','Y6FtAP_Gbl5WCPfcF7iCUY5UISJUO-','ZECi66Y3atGa5CCUIvMQxb7g-UeC1sAAA'];
