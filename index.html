@@ -1012,16 +1012,24 @@ const SECRET  = '977381'; // same as PIN
 // ══════════════════════════════════════
 async function gasCall(params) {
   try {
-    const url = GAS_URL + '?secret=' + SECRET + '&action=' + params.action;
+    // Build query string — GAS works best with GET params
+    const p = Object.assign({ secret: SECRET }, params);
+    const qs = Object.keys(p).map(k => encodeURIComponent(k) + '=' + encodeURIComponent(p[k])).join('&');
+    const url = GAS_URL + '?' + qs;
+
     const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(Object.assign({ secret: SECRET }, params))
+      method: 'GET',
+      redirect: 'follow'
     });
-    const data = await res.json();
-    return data;
+    const text = await res.text();
+    // GAS sometimes returns HTML on error
+    if (text.startsWith('<')) {
+      console.error('GAS returned HTML — auth issue');
+      return { ok: false, error: 'Auth error' };
+    }
+    return JSON.parse(text);
   } catch(e) {
-    console.error('GAS error:', e);
+    console.error('GAS error:', e.message);
     return { ok: false, error: e.message };
   }
 }
