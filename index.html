@@ -1294,6 +1294,13 @@ async function refreshDashboard() {
     const normalized = fRes.entries.map(e => ({...e, date: normalizeDate(e.date)}));
     const other = load('food').filter(e=>normalizeDate(e.date)!==TODAY);
     save('food', other.concat(normalized));
+    // Save each unique food to My Foods DB automatically
+    normalized.forEach(e => {
+      if (e.name && e.cal) {
+        saveToMyFoods({name:e.name, serving:e.serving||'', cal:e.cal,
+          protein:e.pro||0, carbs:e.carb||0, fat:e.fat||0});
+      }
+    });
   }
   if (wkRes.ok && wkRes.entries) {
     const wkNorm = wkRes.entries.map(e => ({...e, date: normalizeDate(e.date)}));
@@ -1442,6 +1449,7 @@ async function addFood() {
   if (!name||!cal) { alert('Enter food name and calories.'); return; }
 
   saveFavorite({name,serving,cal,protein:pro,carbs:carb,fat});
+  saveToMyFoods({name,serving,cal,protein:pro,carbs:carb,fat});
   showSync('⏳ Saving...', '#d97706');
   const res = await gasCall({action:'save_food',date,meal,name,serving,cal,pro,carb,fat,notes});
   if (!res.ok) { toast('❌ Save failed — check connection','#e8365d'); showSync('❌ Sync failed','#e8365d'); return; }
