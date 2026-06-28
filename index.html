@@ -1791,17 +1791,22 @@ const WATER_GOAL_CUPS = 8;
 
 async function loadWater() {
   const key = 'water_' + TODAY;
-  // Show local immediately
+  // Show local immediately (0 if no local)
   const localCups = parseFloat(localStorage.getItem(key) || '0');
   renderWater(localCups);
-  // Then fetch from Sheets and update
+  // Always fetch fresh from Sheets — Sheets is master
   const res = await gasCall({action:'get_water', date:TODAY});
+  console.log('Water from Sheets:', res);
   if (res.ok && res.cups !== undefined && res.cups !== null) {
     const sheetsVal = parseFloat(res.cups) || 0;
-    // Only update if Sheets has more (never overwrite local with less)
+    // Take highest of local vs sheets (in case local has unsaved changes)
     const finalVal = Math.max(localCups, sheetsVal);
     localStorage.setItem(key, finalVal.toString());
     renderWater(finalVal);
+    // If local was higher, sync it back to Sheets
+    if (localCups > sheetsVal && localCups > 0) {
+      gasCall({action:'save_water', date:TODAY, cups:localCups});
+    }
   }
 }
 
