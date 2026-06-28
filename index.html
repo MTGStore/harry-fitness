@@ -918,6 +918,7 @@ tr:last-child td { border-bottom: none; }
 //  CONSTANTS
 // ══════════════════════════════════════
 const CORRECT_PIN = '977381';
+const ANTHROPIC_KEY = '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'; // ← Replace with your key
 const START_WEIGHT = 193.6;
 const GOAL_WEIGHT = 152.5;
 const CAL_GOAL = 1500;
@@ -1126,7 +1127,7 @@ Return ONLY JSON: {"message":"...","tip":"..."}`;
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST', headers:{'Content-Type':'application/json','anthropic-dangerous-direct-browser-access':'true'},
+      method:'POST', headers:{'Content-Type':'application/json','x-api-key':ANTHROPIC_KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
       body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:400, messages:[{role:'user',content:prompt}] })
     });
     const data = await res.json();
@@ -1256,7 +1257,7 @@ Each object must have EXACTLY these fields:
 
   try {
     const res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',headers:{'Content-Type':'application/json','anthropic-dangerous-direct-browser-access':'true'},
+      method:'POST',headers:{'Content-Type':'application/json','x-api-key':ANTHROPIC_KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
       body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:900,messages:[{role:'user',content:prompt}]})
     });
     const data=await res.json();
@@ -1614,7 +1615,7 @@ Rules:
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'anthropic-dangerous-direct-browser-access': 'true' },
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_KEY, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
       body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1200, messages: [{ role: 'user', content: prompt }] })
     });
     const data = await res.json();
