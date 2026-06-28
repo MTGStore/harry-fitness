@@ -1027,44 +1027,73 @@ tr:last-child td { border-bottom: none; }
 //  AI API HELPER — works on GitHub Pages
 // ══════════════════════════════════════
 async function callAI(messages, max_tokens) {
-  // Route AI calls through our Google Apps Script (server-side, no CORS issues)
-  // GAS calls Anthropic directly and returns the result
+  // Use fetch POST to GAS — works because GAS returns proper CORS headers
+  // when called with a callback parameter
   const prompt = messages.map(m => m.content).join('\n');
-  const res = await gasCall({
-    action: 'call_ai',
-    prompt: prompt,
-    max_tokens: max_tokens || 1000
-  });
-  if (res.ok && res.text) return res.text;
-
-  // Fallback: try direct with proxy
-  const proxies = [
-    'https://corsproxy.io/?' + encodeURIComponent('https://api.anthropic.com/v1/messages'),
-    'https://api.anthropic.com/v1/messages'
-  ];
-  const body = JSON.stringify({
-    model: 'claude-sonnet-4-6',
-    max_tokens: max_tokens || 1000,
-    messages: messages
-  });
-  for (const url of proxies) {
-    try {
-      const r = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': ANTHROPIC_KEY,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true'
-        },
-        body: body
-      });
-      if (!r.ok) continue;
-      const data = await r.json();
-      if (data.error) continue;
-      return data.content.map(b => b.text || '').join('').trim();
-    } catch(e) { continue; }
+  
+  // Method 1: POST to GAS (most reliable, no URL length limits)
+  try {
+    const gasRes = await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        secret: SECRET,
+        action: 'call_ai',
+        prompt: prompt,
+        max_tokens: max_tokens || 1000
+      }),
+      redirect: 'follow'
+    });
+    if (gasRes.ok) {
+      const text = await gasRes.text();
+      if (text && !text.startsWith('<')) {
+        const data = JSON.parse(text);
+        if (data.ok && data.text) return data.text;
+      }
+    }
+  } catch(e) {
+    console.warn('GAS POST failed:', e.message);
   }
+
+  // Method 2: JSONP with short prompt (for food lookup only)
+  try {
+    // Shorten prompt to fit URL — extract just the food query
+    const foodMatch = prompt.match(/User query: "([^"]+)"/);
+    const shortPrompt = foodMatch ? foodMatch[1] : prompt.slice(0, 200);
+    const res = await gasCall({
+      action: 'call_ai',
+      prompt: shortPrompt,
+      max_tokens: max_tokens || 1000,
+      mode: 'food'  // tells GAS to use its own food prompt template
+    });
+    if (res.ok && res.text) return res.text;
+  } catch(e) {
+    console.warn('JSONP AI failed:', e.message);
+  }
+
+  // Method 3: Direct Anthropic with dangerous header (works on some browsers)
+  try {
+    const body = JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: max_tokens || 1000,
+      messages: messages
+    });
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: body
+    });
+    const data = await r.json();
+    if (data.content) return data.content.map(b => b.text||'').join('').trim();
+  } catch(e) {
+    console.warn('Direct API failed:', e.message);
+  }
+
   throw new Error('AI lookup failed — please try again');
 }
 
