@@ -1027,22 +1027,29 @@ tr:last-child td { border-bottom: none; }
 //  AI API HELPER — works on GitHub Pages
 // ══════════════════════════════════════
 async function callAI(messages, max_tokens) {
-  // Try multiple proxies — GitHub Pages blocks direct Anthropic calls
+  // Route AI calls through our Google Apps Script (server-side, no CORS issues)
+  // GAS calls Anthropic directly and returns the result
+  const prompt = messages.map(m => m.content).join('\n');
+  const res = await gasCall({
+    action: 'call_ai',
+    prompt: prompt,
+    max_tokens: max_tokens || 1000
+  });
+  if (res.ok && res.text) return res.text;
+
+  // Fallback: try direct with proxy
   const proxies = [
     'https://corsproxy.io/?' + encodeURIComponent('https://api.anthropic.com/v1/messages'),
-    'https://api.allorigins.win/raw?url=' + encodeURIComponent('https://api.anthropic.com/v1/messages'),
     'https://api.anthropic.com/v1/messages'
   ];
-
   const body = JSON.stringify({
     model: 'claude-sonnet-4-6',
     max_tokens: max_tokens || 1000,
     messages: messages
   });
-
   for (const url of proxies) {
     try {
-      const res = await fetch(url, {
+      const r = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1052,16 +1059,13 @@ async function callAI(messages, max_tokens) {
         },
         body: body
       });
-      if (!res.ok) continue;
-      const data = await res.json();
-      if (data.error) throw new Error(data.error.message);
+      if (!r.ok) continue;
+      const data = await r.json();
+      if (data.error) continue;
       return data.content.map(b => b.text || '').join('').trim();
-    } catch(e) {
-      console.warn('Proxy failed:', url, e.message);
-      continue;
-    }
+    } catch(e) { continue; }
   }
-  throw new Error('All AI endpoints failed — check internet connection');
+  throw new Error('AI lookup failed — please try again');
 }
 
 // ══════════════════════════════════════
@@ -2067,19 +2071,28 @@ function loadMyFoods() {
 }
 
 async function loadMyFoodsFromSheets() {
-  // First show what we have locally
+  // Show local first for instant display
   searchMyFoods();
-  // Then fetch from Sheets and merge
+  // Always fetch from Sheets — it's the master
   const res = await gasCall({ action: 'get_myfoods' });
-  if (res.ok && res.foods && res.foods.length) {
-    // Merge: Sheets is master, local fills any gaps
+  console.log('My Foods from Sheets:', res);
+  if (res.ok) {
+    const sheetFoods = res.foods || [];
     const local = loadMyFoods();
-    const sheetNames = res.foods.map(f => f.name.toLowerCase().trim());
-    // Add any local-only items not yet in sheets
-    const localOnly = local.filter(f => !sheetNames.includes(f.name.toLowerCase().trim()));
-    const merged = [...res.foods, ...localOnly];
-    localStorage.setItem('myfoods', JSON.stringify(merged));
-    searchMyFoods(); // re-render with fresh data
+    if (sheetFoods.length > 0) {
+      // Sheets has data — merge with any local-only items
+      const sheetNames = sheetFoods.map(f => f.name.toLowerCase().trim());
+      const localOnly = local.filter(f => !sheetNames.includes(f.name.toLowerCase().trim()));
+      const merged = [...sheetFoods, ...localOnly];
+      localStorage.setItem('myfoods', JSON.stringify(merged));
+    } else if (local.length > 0) {
+      // Sheets empty but local has data — push local up to Sheets
+      local.forEach(f => {
+        gasCall({action:'save_myfood', name:f.name, serving:f.serving||'',
+          cal:f.cal, protein:f.protein||0, carbs:f.carbs||0, fat:f.fat||0, lastUsed:f.lastUsed||TODAY});
+      });
+    }
+    searchMyFoods();
   }
 }
 
