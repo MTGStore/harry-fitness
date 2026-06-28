@@ -698,16 +698,16 @@ tr:last-child td { border-bottom: none; }
         <div class="cal-details">
           <div class="cal-detail-row">
             <div class="cal-detail-label">Daily Goal</div>
-            <div class="cal-detail-val" style="color:var(--accent)">1,500 kcal</div>
+            <div class="cal-detail-val" id="dash-cal-goal-label" style="color:var(--accent)">1,500 kcal</div>
           </div>
           <div class="cal-remain-bar"><div class="cal-remain-fill" id="cal-eaten-bar" style="width:0%;background:var(--accent)"></div></div>
           <div class="cal-detail-row" style="margin-top:8px">
-            <div class="cal-detail-label">Remaining</div>
-            <div class="cal-detail-val" id="dash-cal-remain" style="color:var(--green)">1,500 kcal</div>
+            <div class="cal-detail-label">🏃 Gym Earned</div>
+            <div class="cal-detail-val" id="dash-cal-burned" style="color:var(--green)">0 kcal</div>
           </div>
           <div class="cal-detail-row">
-            <div class="cal-detail-label">Burned (gym)</div>
-            <div class="cal-detail-val" id="dash-cal-burned" style="color:var(--accent2)">0 kcal</div>
+            <div class="cal-detail-label">✅ Remaining</div>
+            <div class="cal-detail-val" id="dash-cal-remain" style="color:var(--green)">1,500 kcal</div>
           </div>
         </div>
       </div>
@@ -1244,8 +1244,10 @@ function setDates() {
 // ══════════════════════════════════════
 //  DASHBOARD REFRESH
 // ══════════════════════════════════════
-function refreshDashboard() {
+async function refreshDashboard() {
   // Weight ring
+  const wRes = await gasCall({action:'get_weight'});
+  if (wRes.ok && wRes.entries) save('weights', wRes.entries);
   const weights = load('weights');
   const cw = weights.length ? weights[weights.length-1].weight : START_WEIGHT;
   const lost = START_WEIGHT - cw;
@@ -1259,35 +1261,57 @@ function refreshDashboard() {
   // Days & lost badge
   const startDate = new Date('2026-06-28');
   const dayNum = Math.max(1, Math.floor((new Date()-startDate)/86400000)+1);
-  document.getElementById('dash-day-num').textContent = dayNum;
   if (lost > 0.05) {
     document.getElementById('dash-lost-badge').innerHTML = `🎉 Lost <strong>${lost.toFixed(1)} lb</strong> · Day ${dayNum}`;
   } else {
-    document.getElementById('dash-lost-badge').innerHTML = `🎯 Journey Day <span id="dash-day-num">${dayNum}</span>`;
+    document.getElementById('dash-lost-badge').innerHTML = `🎯 Journey Day ${dayNum}`;
   }
 
-  // Calorie donut
+  // Fetch today's food from Google Sheets
+  const fRes = await gasCall({action:'get_food', date:TODAY});
+  if (fRes.ok && fRes.entries && fRes.entries.length) {
+    const all = load('food').filter(e=>e.date!==TODAY);
+    save('food', all.concat(fRes.entries));
+  }
+
+  // Fetch today's workouts from Google Sheets
+  const wkRes = await gasCall({action:'get_workout'});
+  if (wkRes.ok && wkRes.entries) {
+    const cardioEntries = wkRes.entries.filter(e=>e.type==='cardio');
+    const strengthEntries = wkRes.entries.filter(e=>e.type==='strength');
+    save('cardio', cardioEntries);
+    save('strength', strengthEntries);
+  }
+
+  // Calorie donut — now uses fresh Sheets data
   const todayFood = load('food').filter(f=>f.date===TODAY);
-  const eaten = todayFood.reduce((s,f)=>s+f.cal,0);
+  const eaten = Math.round(todayFood.reduce((s,f)=>s+(Number(f.cal)||0),0));
   const todayCardio = load('cardio').filter(c=>c.date===TODAY);
-  const burned = todayCardio.reduce((s,c)=>s+(c.cal||0),0);
-  const remain = Math.max(0, CAL_GOAL - eaten);
-  const calPct = Math.min(100, (eaten/CAL_GOAL)*100);
+  const burned = Math.round(todayCardio.reduce((s,c)=>s+(Number(c.cal)||0),0));
+
+  // Net calories = Goal + Burned - Eaten (exercise earns you more food!)
+  const netGoal = CAL_GOAL + burned;
+  const remain = Math.max(0, netGoal - eaten);
+  const calPct = Math.min(100, (eaten/netGoal)*100);
   const calCirc = 251;
   document.getElementById('cal-donut-fill').style.strokeDashoffset = calCirc - (calCirc * calPct/100);
-  const fillColor = eaten > CAL_GOAL ? '#e8365d' : eaten > CAL_GOAL*0.85 ? '#d97706' : '#5046e4';
+  const fillColor = eaten > netGoal ? '#e8365d' : eaten > netGoal*0.85 ? '#d97706' : '#5046e4';
   document.getElementById('cal-donut-fill').style.stroke = fillColor;
   document.getElementById('dash-cal-eaten').textContent = eaten;
   document.getElementById('dash-cal-remain').textContent = remain.toLocaleString()+' kcal';
   document.getElementById('dash-cal-remain').style.color = remain < 200 ? 'var(--accent2)' : 'var(--green)';
-  document.getElementById('dash-cal-burned').textContent = burned ? burned+' kcal' : '0 kcal';
+  document.getElementById('dash-cal-burned').textContent = burned ? '+'+burned+' kcal earned!' : '0 kcal';
   document.getElementById('cal-eaten-bar').style.width = calPct+'%';
   document.getElementById('cal-eaten-bar').style.background = fillColor;
 
+  // Update goal label to show net
+  const goalEl = document.getElementById('dash-cal-goal-label');
+  if (goalEl) goalEl.textContent = burned ? (netGoal.toLocaleString()+' kcal (1,500 + '+burned+' earned)') : '1,500 kcal';
+
   // Macros
-  const pro = todayFood.reduce((s,f)=>s+f.pro,0);
-  const carb = todayFood.reduce((s,f)=>s+f.carb,0);
-  const fat = todayFood.reduce((s,f)=>s+f.fat,0);
+  const pro = todayFood.reduce((s,f)=>s+(Number(f.pro)||0),0);
+  const carb = todayFood.reduce((s,f)=>s+(Number(f.carb)||0),0);
+  const fat = todayFood.reduce((s,f)=>s+(Number(f.fat)||0),0);
   document.getElementById('dash-pro').textContent = Math.round(pro)+'g';
   document.getElementById('dash-carb').textContent = Math.round(carb)+'g';
   document.getElementById('dash-fat').textContent = Math.round(fat)+'g';
