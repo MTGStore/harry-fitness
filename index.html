@@ -1223,7 +1223,7 @@ function showScreen(name) {
   if (navEl) navEl.classList.add('active');
   window.scrollTo(0,0);
   if (name==='dashboard') refreshDashboard();
-  if (name==='food') { renderFoodLog(); renderFavorites(); searchMyFoods(); }
+  if (name==='food') { renderFoodLog(); renderFavorites(); loadMyFoodsFromSheets(); }
   if (name==='workout') { renderWorkoutLog(); if (!workoutCoachLoaded) loadWorkoutCoach(); }
   if (name==='progress') renderProgress();
 }
@@ -2024,10 +2024,26 @@ function loadMyFoods() {
   try { return JSON.parse(localStorage.getItem('myfoods') || '[]'); } catch { return []; }
 }
 
+async function loadMyFoodsFromSheets() {
+  // First show what we have locally
+  searchMyFoods();
+  // Then fetch from Sheets and merge
+  const res = await gasCall({ action: 'get_myfoods' });
+  if (res.ok && res.foods && res.foods.length) {
+    // Merge: Sheets is master, local fills any gaps
+    const local = loadMyFoods();
+    const sheetNames = res.foods.map(f => f.name.toLowerCase().trim());
+    // Add any local-only items not yet in sheets
+    const localOnly = local.filter(f => !sheetNames.includes(f.name.toLowerCase().trim()));
+    const merged = [...res.foods, ...localOnly];
+    localStorage.setItem('myfoods', JSON.stringify(merged));
+    searchMyFoods(); // re-render with fresh data
+  }
+}
+
 function saveToMyFoods(item) {
   let db = loadMyFoods();
   const key = item.name.toLowerCase().trim();
-  // Update if exists, else add
   const idx = db.findIndex(f => f.name.toLowerCase().trim() === key);
   const entry = {
     name: item.name,
@@ -2042,6 +2058,18 @@ function saveToMyFoods(item) {
   if (idx >= 0) db[idx] = entry;
   else db.unshift(entry);
   localStorage.setItem('myfoods', JSON.stringify(db));
+
+  // Sync to Google Sheets (fire and forget — non-blocking)
+  gasCall({
+    action: 'save_myfood',
+    name: entry.name,
+    serving: entry.serving,
+    cal: entry.cal,
+    protein: entry.protein,
+    carbs: entry.carbs,
+    fat: entry.fat,
+    lastUsed: entry.lastUsed
+  });
 }
 
 function searchMyFoods() {
