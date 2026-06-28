@@ -1109,13 +1109,11 @@ const SECRET  = '977381'; // same as PIN
 // ══════════════════════════════════════
 //  GOOGLE SHEETS API HELPER
 // ══════════════════════════════════════
-async function gasCall(params) {
+async function gasCall(params, timeoutMs) {
   return new Promise((resolve) => {
     try {
       const cbName = 'cb_' + Date.now();
-      // Always include secret and callback
       const p = Object.assign({ secret: SECRET, callback: cbName }, params);
-      // Properly encode every value — handles spaces, special chars, emojis
       const qs = Object.keys(p).map(k =>
         encodeURIComponent(k) + '=' + encodeURIComponent(String(p[k]||''))
       ).join('&');
@@ -1137,6 +1135,8 @@ async function gasCall(params) {
         resolve({ ok: false, error: 'Script load failed' });
       };
 
+      // AI calls need longer timeout (Anthropic can take 5-10s)
+      const ms = timeoutMs || (params.action === 'call_ai' ? 45000 : 15000);
       setTimeout(() => {
         if (window[cbName]) {
           delete window[cbName];
@@ -1144,7 +1144,7 @@ async function gasCall(params) {
           if (s) s.remove();
           resolve({ ok: false, error: 'Timeout — check connection' });
         }
-      }, 12000);
+      }, ms);
 
       document.head.appendChild(script);
     } catch(e) {
@@ -1532,7 +1532,7 @@ async function aiLookup() {
   const title=document.getElementById('ai-result-title');
   btn.disabled=true; btn.textContent='Searching...';
   box.classList.add('show');
-  opts.innerHTML=`<div class="ai-loading"><span class="ai-spinner"></span>Estimating "${query}"...</div>`;
+  opts.innerHTML=`<div class="ai-loading"><span class="ai-spinner"></span>Asking AI about "${query}"... (may take 10-15 seconds)</div>`;
   title.textContent='Results';
 
   const prompt=`You are a nutritionist expert in Indian cuisine — Gujarati, South Indian, Punjabi, and all common Indian foods and drinks.
