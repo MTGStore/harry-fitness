@@ -377,6 +377,63 @@ tr:last-child td { border-bottom: none; }
 
 
 
+
+/* ════ FLYING MODE ════ */
+.flying-toggle-card {
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
+  border-radius: 18px; padding: 16px; margin-bottom: 14px;
+  border: 1px solid rgba(56,189,248,0.3);
+  box-shadow: 0 4px 20px rgba(56,189,248,0.1);
+}
+.flying-header { display: flex; align-items: center; justify-content: space-between; }
+.flying-left { display: flex; align-items: center; gap: 12px; }
+.flying-icon { font-size: 2rem; }
+.flying-title { color: #fff; font-size: 0.95rem; font-weight: 800; }
+.flying-sub { color: rgba(255,255,255,0.5); font-size: 0.7rem; margin-top: 2px; }
+.flying-switch {
+  position: relative; width: 56px; height: 30px; flex-shrink: 0;
+}
+.flying-switch input { opacity: 0; width: 0; height: 0; }
+.flying-slider {
+  position: absolute; inset: 0; background: rgba(255,255,255,0.15);
+  border-radius: 99px; cursor: pointer; transition: 0.3s;
+  border: 1px solid rgba(255,255,255,0.2);
+}
+.flying-slider:before {
+  content: ''; position: absolute;
+  width: 22px; height: 22px; left: 4px; top: 3px;
+  background: #fff; border-radius: 50%; transition: 0.3s;
+}
+input:checked + .flying-slider { background: #0ea5e9; border-color: #38bdf8; }
+input:checked + .flying-slider:before { transform: translateX(26px); }
+.flying-details {
+  margin-top: 14px; padding-top: 14px;
+  border-top: 1px solid rgba(255,255,255,0.1);
+  display: none;
+}
+.flying-details.show { display: block; }
+.flying-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.flying-stat {
+  background: rgba(255,255,255,0.07); border-radius: 10px;
+  padding: 10px; text-align: center;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+.flying-stat-val { font-size: 1.1rem; font-weight: 800; color: #38bdf8; }
+.flying-stat-lbl { font-size: 0.62rem; color: rgba(255,255,255,0.5); text-transform: uppercase; margin-top: 2px; }
+.flying-tip {
+  background: rgba(56,189,248,0.1); border: 1px solid rgba(56,189,248,0.2);
+  border-radius: 10px; padding: 10px 14px;
+  font-size: 0.78rem; color: rgba(255,255,255,0.75); line-height: 1.5;
+}
+.flying-tip strong { color: #38bdf8; }
+.flying-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: rgba(56,189,248,0.15); border: 1px solid rgba(56,189,248,0.3);
+  border-radius: 99px; padding: 3px 10px;
+  font-size: 0.68rem; color: #38bdf8; font-weight: 700;
+  margin-top: 8px;
+}
+
 /* ════ BARCODE SCANNER ════ */
 .scanner-card { margin-bottom: 14px; }
 .scan-btn {
@@ -797,6 +854,47 @@ tr:last-child td { border-bottom: none; }
       </div>
     </div>
 
+
+
+    <!-- FLYING MODE TOGGLE -->
+    <div class="flying-toggle-card">
+      <div class="flying-header">
+        <div class="flying-left">
+          <div class="flying-icon" id="flying-icon">✈️</div>
+          <div>
+            <div class="flying-title" id="flying-title">Flying Today?</div>
+            <div class="flying-sub" id="flying-sub">Toggle if you're working a flight today</div>
+          </div>
+        </div>
+        <label class="flying-switch">
+          <input type="checkbox" id="flying-toggle" onchange="toggleFlyingMode()">
+          <span class="flying-slider"></span>
+        </label>
+      </div>
+      <div class="flying-details" id="flying-details">
+        <div class="flying-stats">
+          <div class="flying-stat">
+            <div class="flying-stat-val">14</div>
+            <div class="flying-stat-lbl">Water Goal</div>
+          </div>
+          <div class="flying-stat">
+            <div class="flying-stat-val">+300</div>
+            <div class="flying-stat-lbl">Cal Burned</div>
+          </div>
+          <div class="flying-stat">
+            <div class="flying-stat-val" id="flying-cal-budget">1,800</div>
+            <div class="flying-stat-lbl">Cal Budget</div>
+          </div>
+        </div>
+        <div class="flying-tip">
+          ✈️ <strong>Flying mode active!</strong> Water goal increased to 14 cups. 
+          Cabin humidity is only 10-20% — drink one cup every hour you're in the air. 
+          Avoid caffeine and alcohol — they dehydrate you faster at altitude.
+          Your calorie budget is higher today because you burn more on your feet all flight.
+        </div>
+        <div class="flying-badge">🛫 Delta Air Lines · Senior Flight Attendant · 18+ years</div>
+      </div>
+    </div>
 
     <!-- Water Tracker Card -->
     <div class="water-card">
@@ -1476,6 +1574,7 @@ async function refreshDashboard() {
   // ── Food preview & water ────────────────────────────────────────
   renderDashFoodPreview(todayFood);
   loadWater();
+  initFlyingMode();
 }
 
 function renderDashFoodPreview(entries) {
@@ -1942,7 +2041,7 @@ function seedDay1() {
 // ══════════════════════════════════════
 //  WATER TRACKER
 // ══════════════════════════════════════
-const WATER_GOAL_CUPS = 8;
+var WATER_GOAL_CUPS = 8; // dynamic — changes with flying mode
 
 async function loadWater() {
   const key = 'water_' + TODAY;
@@ -2402,6 +2501,106 @@ async function addFavorite(idx) {
   await addFromMyFoods(f.name);
 }
 
+
+
+// ══════════════════════════════════════
+//  FLYING MODE
+// ══════════════════════════════════════
+const WATER_GOAL_FLYING = 14;
+const WATER_GOAL_NORMAL = 8;
+const CAL_BONUS_FLYING = 300; // extra calories burned on flight day
+
+function toggleFlyingMode() {
+  const isFlying = document.getElementById('flying-toggle').checked;
+  localStorage.setItem('flying_' + TODAY, isFlying ? '1' : '0');
+  applyFlyingMode(isFlying);
+}
+
+function applyFlyingMode(isFlying) {
+  const details = document.getElementById('flying-details');
+  const title = document.getElementById('flying-title');
+  const sub = document.getElementById('flying-sub');
+  const icon = document.getElementById('flying-icon');
+  const toggle = document.getElementById('flying-toggle');
+  const budgetEl = document.getElementById('flying-cal-budget');
+
+  toggle.checked = isFlying;
+
+  if (isFlying) {
+    details.classList.add('show');
+    title.textContent = '🛫 Flying Mode Active!';
+    sub.textContent = 'Water goal: 14 cups · Extra calories earned';
+    icon.textContent = '🛫';
+    if (budgetEl) budgetEl.textContent = (CAL_GOAL + CAL_BONUS_FLYING).toLocaleString();
+  } else {
+    details.classList.remove('show');
+    title.textContent = 'Flying Today?';
+    sub.textContent = "Toggle if you are working a flight today";
+    icon.textContent = '✈️';
+  }
+
+  // Update water goal
+  window.WATER_GOAL_CUPS = isFlying ? WATER_GOAL_FLYING : WATER_GOAL_NORMAL;
+
+  // Re-render water with new goal
+  const key = 'water_' + TODAY;
+  const cups = parseFloat(localStorage.getItem(key) || '0');
+  renderWater(cups);
+
+  // Update calorie display
+  refreshCalDisplay();
+}
+
+function isFlyingToday() {
+  return localStorage.getItem('flying_' + TODAY) === '1';
+}
+
+function initFlyingMode() {
+  const isFlying = isFlyingToday();
+  applyFlyingMode(isFlying);
+}
+
+function refreshCalDisplay() {
+  // Recalculate calories with flying bonus
+  const todayFood = load('food').filter(f => normalizeDate(f.date) === TODAY);
+  const eaten = Math.round(todayFood.reduce((s,f) => s+(Number(f.cal)||0), 0));
+  const todayCardio = load('cardio').filter(c => normalizeDate(c.date) === TODAY);
+  const gymBurned = Math.round(todayCardio.reduce((s,c) => s+(Number(c.cal)||0), 0));
+  const flyingBonus = isFlyingToday() ? CAL_BONUS_FLYING : 0;
+  const netGoal = CAL_GOAL + gymBurned + flyingBonus;
+  const remain = Math.max(0, netGoal - eaten);
+  const calPct = Math.min(100, (eaten/netGoal)*100);
+  const fillColor = eaten>netGoal ? '#e8365d' : eaten>netGoal*0.85 ? '#d97706' : '#5046e4';
+
+  const donutEl = document.getElementById('cal-donut-fill');
+  if (donutEl) {
+    donutEl.style.strokeDashoffset = 251-(251*calPct/100);
+    donutEl.style.stroke = fillColor;
+  }
+  const eatenEl = document.getElementById('dash-cal-eaten');
+  if (eatenEl) eatenEl.textContent = eaten;
+  const remainEl = document.getElementById('dash-cal-remain');
+  if (remainEl) {
+    remainEl.textContent = remain.toLocaleString()+' kcal';
+    remainEl.style.color = remain<200 ? 'var(--accent2)' : 'var(--green)';
+  }
+  const burnedEl = document.getElementById('dash-cal-burned');
+  if (burnedEl) {
+    let burnedText = '';
+    if (gymBurned > 0) burnedText += '+'+gymBurned+' gym';
+    if (flyingBonus > 0) burnedText += (burnedText?' · ':'')+'+'+flyingBonus+' flying';
+    burnedEl.textContent = burnedText || '0 kcal';
+  }
+  const barEl = document.getElementById('cal-eaten-bar');
+  if (barEl) { barEl.style.width = calPct+'%'; barEl.style.background = fillColor; }
+  const goalEl = document.getElementById('dash-cal-goal-label');
+  if (goalEl) {
+    let goalParts = '1,500 kcal base';
+    if (gymBurned > 0) goalParts += ' + '+gymBurned+' gym';
+    if (flyingBonus > 0) goalParts += ' + '+flyingBonus+' flying';
+    goalEl.textContent = netGoal.toLocaleString()+' kcal'+(flyingBonus||gymBurned ? ' ('+goalParts+')' : '');
+  }
+}
 
 // ══════════════════════════════════════
 //  BARCODE SCANNER + OPEN FOOD FACTS
