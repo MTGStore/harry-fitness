@@ -1159,7 +1159,15 @@ const START_WEIGHT = 193.6;
 const GOAL_WEIGHT = 152.5;
 const CAL_GOAL = 1500;
 const PRO_GOAL = 120;
-const TODAY = new Date().toISOString().slice(0,10);
+// Use LOCAL date not UTC — fixes timezone issue (EST users see wrong date after 8pm)
+function getLocalToday() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return y+'-'+m+'-'+day;
+}
+const TODAY = getLocalToday();
 
 // Normalize any date format to YYYY-MM-DD
 function normalizeDate(d) {
