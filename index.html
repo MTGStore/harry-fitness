@@ -376,6 +376,77 @@ tr:last-child td { border-bottom: none; }
 
 
 
+
+/* ════ BARCODE SCANNER ════ */
+.scanner-card { margin-bottom: 14px; }
+.scan-btn {
+  width: 100%; padding: 14px; border-radius: 12px;
+  background: linear-gradient(135deg, #1a1740, #2d1f6e);
+  color: #fff; border: none; font-size: 0.95rem; font-weight: 700;
+  cursor: pointer; font-family: inherit; display: flex;
+  align-items: center; justify-content: center; gap: 10px;
+  min-height: 52px; transition: opacity 0.2s;
+}
+.scan-btn:active { opacity: 0.85; }
+.scanner-wrap {
+  display: none; position: relative;
+  width: 100%; border-radius: 14px; overflow: hidden;
+  background: #000; margin-top: 12px;
+}
+.scanner-wrap.show { display: block; }
+.scanner-wrap video {
+  width: 100%; display: block; max-height: 280px; object-fit: cover;
+}
+.scanner-overlay {
+  position: absolute; inset: 0; display: flex;
+  align-items: center; justify-content: center; pointer-events: none;
+}
+.scanner-frame {
+  width: 220px; height: 140px;
+  border: 3px solid #a78bfa;
+  border-radius: 12px;
+  box-shadow: 0 0 0 9999px rgba(0,0,0,0.45);
+}
+.scanner-line {
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: 200px; height: 2px;
+  background: linear-gradient(90deg, transparent, #a78bfa, transparent);
+  animation: scanline 1.5s ease-in-out infinite;
+}
+@keyframes scanline {
+  0%,100% { transform: translate(-50%, -30px); opacity: 0.3; }
+  50% { transform: translate(-50%, 30px); opacity: 1; }
+}
+.scanner-close-btn {
+  position: absolute; top: 10px; right: 10px;
+  background: rgba(0,0,0,0.6); color: #fff; border: none;
+  border-radius: 99px; padding: 6px 12px; font-size: 0.78rem;
+  cursor: pointer; font-family: inherit; font-weight: 700; z-index: 10;
+}
+.scan-result {
+  margin-top: 12px; background: #f3f0ff; border: 1.5px solid #a78bfa;
+  border-radius: 12px; padding: 14px; display: none;
+}
+.scan-result.show { display: block; }
+.scan-result-name { font-size: 0.9rem; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+.scan-result-macros { font-size: 0.78rem; color: var(--muted); margin-bottom: 10px; }
+.scan-result-brand { font-size: 0.72rem; color: #a78bfa; margin-bottom: 8px; }
+.scan-use-btn {
+  width: 100%; padding: 11px; background: #5046e4; color: #fff;
+  border: none; border-radius: 10px; font-size: 0.88rem; font-weight: 700;
+  cursor: pointer; font-family: inherit;
+}
+.scan-manual-upc {
+  display: flex; gap: 8px; margin-top: 10px;
+}
+.scan-manual-upc input { flex: 1; }
+.scan-manual-btn {
+  background: #5046e4; color: #fff; border: none; border-radius: 10px;
+  padding: 12px 16px; font-size: 0.82rem; font-weight: 700;
+  cursor: pointer; font-family: inherit; white-space: nowrap;
+}
+
 /* ════ MY FOODS DATABASE ════ */
 .myfoods-search-wrap { display:flex; gap:8px; margin-bottom:10px; }
 .myfoods-search-wrap input { flex:1; }
@@ -585,7 +656,6 @@ tr:last-child td { border-bottom: none; }
     <div class="pin-dots">
       <div class="pin-dot" id="d0"></div><div class="pin-dot" id="d1"></div>
       <div class="pin-dot" id="d2"></div><div class="pin-dot" id="d3"></div>
-      <div class="pin-dot" id="d4"></div><div class="pin-dot" id="d5"></div>
     </div>
     <div class="numpad">
       <button class="num-btn" onclick="pinPress('1')">1</button>
@@ -823,6 +893,42 @@ tr:last-child td { border-bottom: none; }
       </div>
     </div>
 
+
+
+    <!-- BARCODE SCANNER CARD -->
+    <div class="card scanner-card">
+      <div class="card-title">
+        <span class="dot" style="background:#a78bfa"></span>
+        📷 Scan Barcode — Free Nutrition Lookup
+      </div>
+      <div style="font-size:0.75rem;color:var(--muted);margin-bottom:12px">
+        Scan any packaged food barcode — calories &amp; macros auto-filled instantly. No AI credit used!
+      </div>
+      <button class="scan-btn" onclick="startScanner()">
+        📷 Tap to Scan Barcode
+      </button>
+      <div style="margin-top:8px">
+        <div style="font-size:0.72rem;color:var(--muted);text-align:center;margin-bottom:6px">— or type UPC manually —</div>
+        <div class="scan-manual-upc">
+          <input type="number" id="manual-upc" placeholder="e.g. 028400315264" inputmode="numeric">
+          <button class="scan-manual-btn" onclick="lookupUPC(document.getElementById('manual-upc').value)">🔍 Look Up</button>
+        </div>
+      </div>
+      <div class="scanner-wrap" id="scanner-wrap">
+        <video id="scanner-video" autoplay playsinline muted></video>
+        <div class="scanner-overlay">
+          <div class="scanner-frame"></div>
+          <div class="scanner-line"></div>
+        </div>
+        <button class="scanner-close-btn" onclick="stopScanner()">✕ Close</button>
+      </div>
+      <div class="scan-result" id="scan-result">
+        <div class="scan-result-brand" id="scan-brand"></div>
+        <div class="scan-result-name" id="scan-name"></div>
+        <div class="scan-result-macros" id="scan-macros"></div>
+        <button class="scan-use-btn" onclick="useScanResult()">➕ Add to Food Log</button>
+      </div>
+    </div>
 
     <!-- MY FOODS DATABASE -->
     <div class="card">
@@ -1100,11 +1206,11 @@ async function callAI(messages, max_tokens) {
 // ══════════════════════════════════════
 //  CONSTANTS
 // ══════════════════════════════════════
-const CORRECT_PIN = '977381';
+const CORRECT_PIN = '7381';
 // Key is split to avoid GitHub secret scanning — reassembled at runtime
 // Google Apps Script Web App URL
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbwbNle5ivm-DVcY4Wm6kxRjDShPHRc0HBU_Y5sqiDyZpestnQog3e12SPbPXMxdXx-9/exec';
-const SECRET  = '977381'; // same as PIN
+const SECRET  = '7381'; // same as PIN
 
 // ══════════════════════════════════════
 //  GOOGLE SHEETS API HELPER
@@ -1209,10 +1315,10 @@ function toast(msg, color) {
 // ══════════════════════════════════════
 let pinEntry = '';
 function pinPress(d) {
-  if (pinEntry.length >= 6) return;
+  if (pinEntry.length >= 4) return;
   pinEntry += d;
   updateDots();
-  if (pinEntry.length === 6) setTimeout(checkPin, 120);
+  if (pinEntry.length === 4) setTimeout(checkPin, 120);
 }
 function pinDel() {
   pinEntry = pinEntry.slice(0,-1);
@@ -1220,7 +1326,7 @@ function pinDel() {
   document.getElementById('login-error').textContent = '';
 }
 function updateDots() {
-  for (let i=0;i<6;i++) {
+  for (let i=0;i<4;i++) {
     const d = document.getElementById('d'+i);
     d.className = 'pin-dot' + (i < pinEntry.length ? ' filled' : '');
   }
@@ -1239,7 +1345,7 @@ function checkPin() {
     });
   } else {
     document.getElementById('login-error').textContent = '❌ Incorrect PIN. Try again.';
-    for (let i=0;i<6;i++) document.getElementById('d'+i).className='pin-dot error';
+    for (let i=0;i<4;i++) document.getElementById('d'+i).className='pin-dot error';
     setTimeout(() => { pinEntry=''; updateDots(); document.getElementById('login-error').textContent=''; }, 700);
   }
 }
@@ -1845,7 +1951,7 @@ async function loadWater() {
   renderWater(localCups);
   // Always fetch fresh from Sheets — Sheets is master
   const res = await gasCall({action:'get_water', date:TODAY});
-  console.log('Water from Sheets:', res);
+
   if (res.ok && res.cups !== undefined && res.cups !== null) {
     const sheetsVal = parseFloat(res.cups) || 0;
     // Take highest of local vs sheets (in case local has unsaved changes)
@@ -2294,6 +2400,190 @@ async function addFavorite(idx) {
   const f = favs[idx];
   if (!f) return;
   await addFromMyFoods(f.name);
+}
+
+
+// ══════════════════════════════════════
+//  BARCODE SCANNER + OPEN FOOD FACTS
+// ══════════════════════════════════════
+let scannerStream = null;
+let scannerInterval = null;
+let lastScanResult = null;
+
+async function startScanner() {
+  const wrap = document.getElementById('scanner-wrap');
+  const video = document.getElementById('scanner-video');
+  try {
+    // Request camera
+    scannerStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    video.srcObject = scannerStream;
+    wrap.classList.add('show');
+    document.getElementById('scan-result').classList.remove('show');
+
+    // Load Quagga barcode library dynamically
+    if (!window.Quagga) {
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js');
+    }
+
+    // Start Quagga
+    Quagga.init({
+      inputStream: {
+        name: 'Live',
+        type: 'LiveStream',
+        target: video,
+        constraints: { facingMode: 'environment' }
+      },
+      decoder: {
+        readers: ['ean_reader', 'upc_reader', 'upc_e_reader', 'code_128_reader']
+      },
+      locate: true
+    }, function(err) {
+      if (err) { console.error('Quagga init error:', err); return; }
+      Quagga.start();
+    });
+
+    Quagga.onDetected(function(result) {
+      const code = result.codeResult.code;
+      if (code && code.length >= 8) {
+        stopScanner();
+        lookupUPC(code);
+      }
+    });
+
+  } catch(e) {
+    alert('Camera not available. Please use the manual UPC entry below.');
+    console.error('Camera error:', e);
+  }
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src; s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+function stopScanner() {
+  if (scannerStream) {
+    scannerStream.getTracks().forEach(t => t.stop());
+    scannerStream = null;
+  }
+  if (window.Quagga) {
+    try { Quagga.stop(); } catch(e) {}
+  }
+  document.getElementById('scanner-wrap').classList.remove('show');
+}
+
+async function lookupUPC(upc) {
+  if (!upc || upc.toString().length < 6) {
+    alert('Please enter a valid UPC/barcode number'); return;
+  }
+  const resultDiv = document.getElementById('scan-result');
+  const nameEl = document.getElementById('scan-name');
+  const brandEl = document.getElementById('scan-brand');
+  const macrosEl = document.getElementById('scan-macros');
+
+  resultDiv.classList.add('show');
+  nameEl.textContent = 'Looking up barcode...';
+  brandEl.textContent = '';
+  macrosEl.textContent = '';
+
+  try {
+    // Open Food Facts API — completely free, no key needed
+    const res = await fetch(
+      'https://world.openfoodfacts.org/api/v0/product/' + upc.toString().trim() + '.json'
+    );
+    const data = await res.json();
+
+    if (data.status !== 1 || !data.product) {
+      nameEl.textContent = '❌ Product not found in database';
+      macrosEl.textContent = 'Try searching manually in AI Lookup above';
+      lastScanResult = null;
+      return;
+    }
+
+    const p = data.product;
+    const nutrients = p.nutriments || {};
+
+    // Get per-serving or per-100g nutrition
+    const servingSize = p.serving_size || '100g';
+    const servingG = parseFloat(p.serving_quantity) || 100;
+    const factor = servingG / 100;
+
+    const cal = Math.round((nutrients['energy-kcal_serving'] || nutrients['energy-kcal_100g'] * factor) || 0);
+    const protein = parseFloat(((nutrients['proteins_serving'] || nutrients['proteins_100g'] * factor) || 0).toFixed(1));
+    const carbs = parseFloat(((nutrients['carbohydrates_serving'] || nutrients['carbohydrates_100g'] * factor) || 0).toFixed(1));
+    const fat = parseFloat(((nutrients['fat_serving'] || nutrients['fat_100g'] * factor) || 0).toFixed(1));
+
+    const productName = p.product_name || p.product_name_en || 'Unknown Product';
+    const brand = p.brands || '';
+
+    brandEl.textContent = brand ? '🏷️ ' + brand : '';
+    nameEl.textContent = '✅ ' + productName;
+    macrosEl.textContent = servingSize + ' · ' + cal + ' kcal · P:' + protein + 'g · C:' + carbs + 'g · F:' + fat + 'g';
+
+    lastScanResult = {
+      name: productName + (brand ? ' (' + brand + ')' : ''),
+      serving: servingSize,
+      cal: cal,
+      protein: protein,
+      carbs: carbs,
+      fat: fat
+    };
+
+    // Also save to My Foods automatically
+    if (cal > 0) {
+      saveFavorite({name:lastScanResult.name, serving:lastScanResult.serving,
+        cal:cal, protein:protein, carbs:carbs, fat:fat});
+    }
+
+  } catch(e) {
+    nameEl.textContent = '⚠️ Lookup failed — check connection';
+    macrosEl.textContent = e.message;
+    lastScanResult = null;
+  }
+}
+
+async function useScanResult() {
+  if (!lastScanResult) return;
+  const meal = document.getElementById('food-meal').value;
+  const date = document.getElementById('food-date').value || TODAY;
+
+  showSync('⏳ Saving...', '#d97706');
+  const res = await gasCall({
+    action: 'save_food', date, meal,
+    name: lastScanResult.name,
+    serving: lastScanResult.serving,
+    cal: lastScanResult.cal,
+    pro: lastScanResult.protein,
+    carb: lastScanResult.carbs,
+    fat: lastScanResult.fat,
+    notes: 'via barcode scan'
+  });
+
+  if (res.ok) {
+    const entries = load('food');
+    entries.push({
+      id: res.id || Date.now().toString(), date, meal,
+      name: lastScanResult.name, serving: lastScanResult.serving,
+      cal: lastScanResult.cal, pro: lastScanResult.protein,
+      carb: lastScanResult.carbs, fat: lastScanResult.fat,
+      notes: 'via barcode scan'
+    });
+    save('food', entries);
+    showSync('✅ Synced', '#00a878');
+    toast('✅ ' + lastScanResult.name + ' added!', '#00a878');
+    document.getElementById('scan-result').classList.remove('show');
+    document.getElementById('manual-upc').value = '';
+    lastScanResult = null;
+    renderFoodLog();
+  } else {
+    showSync('❌ ' + (res.error||'Failed'), '#e8365d');
+    toast('❌ Save failed', '#e8365d');
+  }
 }
 
 // ══════════════════════════════════════
