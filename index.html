@@ -1489,12 +1489,19 @@ async function refreshDashboard() {
   showSync('⏳ Syncing from Google Sheets...', '#d97706');
 
   // ── Fetch ALL data from Sheets in parallel ──────────────────────
-  const [wRes, fRes, wkRes, waterRes] = await Promise.all([
+  const [wRes, fRes, wkRes, waterRes, flyingRes] = await Promise.all([
     gasCall({action:'get_weight'}),
     gasCall({action:'get_food', date:TODAY}),
     gasCall({action:'get_workout'}),
-    gasCall({action:'get_water', date:TODAY})
+    gasCall({action:'get_water', date:TODAY}),
+    gasCall({action:'get_setting', key:'flying_'+TODAY})
   ]);
+  // Apply flying mode from Sheets immediately
+  if (flyingRes.ok) {
+    const sheetsFlying = String(flyingRes.value || '0').trim() === '1';
+    localStorage.setItem('flying_'+TODAY, sheetsFlying ? '1' : '0');
+    applyFlyingMode(sheetsFlying);
+  }
 
   // ── Save fresh data to local cache ──────────────────────────────
   if (wRes.ok && wRes.entries)  {
@@ -1574,7 +1581,7 @@ async function refreshDashboard() {
   // ── Food preview & water ────────────────────────────────────────
   renderDashFoodPreview(todayFood);
   loadWater();
-  initFlyingMode();
+  // Flying mode already applied above in Promise.all
 }
 
 function renderDashFoodPreview(entries) {
@@ -2510,13 +2517,27 @@ const WATER_GOAL_FLYING = 14;
 const WATER_GOAL_NORMAL = 8;
 const CAL_BONUS_FLYING = 300; // extra calories burned on flight day
 
-function toggleFlyingMode() {
+async function toggleFlyingMode() {
   const isFlying = document.getElementById('flying-toggle').checked;
-  localStorage.setItem('flying_' + TODAY, isFlying ? '1' : '0');
-  // Sync to Google Sheets so all devices know
-  gasCall({ action: 'save_setting', key: 'flying_' + TODAY, value: isFlying ? '1' : '0' });
+  const flyingKey = 'flying_' + TODAY;
+  // Save locally immediately
+  localStorage.setItem(flyingKey, isFlying ? '1' : '0');
   applyFlyingMode(isFlying);
-  toast(isFlying ? '🛫 Flying mode ON — 14 cup water goal!' : '✈️ Flying mode OFF', isFlying ? '#0ea5e9' : '#6b7280');
+  // Save to Sheets and confirm
+  showSync('⏳ Saving flying status...', '#0ea5e9');
+  const res = await gasCall({ 
+    action: 'save_setting', 
+    key: flyingKey, 
+    value: isFlying ? '1' : '0' 
+  });
+  if (res.ok) {
+    showSync('✅ Flying status synced', '#0ea5e9');
+    toast(isFlying ? '🛫 Flying mode ON — synced to all devices!' : '✈️ Flying mode OFF', isFlying ? '#0ea5e9' : '#6b7280');
+  } else {
+    showSync('⚠️ Saved locally only', '#d97706');
+    toast(isFlying ? '🛫 Flying mode ON (offline)' : '✈️ Flying mode OFF', '#d97706');
+  }
+  setTimeout(() => showSync('', ''), 2000);
 }
 
 function applyFlyingMode(isFlying) {
@@ -2563,13 +2584,19 @@ async function initFlyingMode() {
   const localFlying = isFlyingToday();
   applyFlyingMode(localFlying);
   // Then check Sheets to sync across devices
-  const res = await gasCall({ action: 'get_setting', key: 'flying_' + TODAY });
-  if (res.ok && res.value !== null) {
-    const sheetsFlying = res.value === '1' || res.value === true;
-    if (sheetsFlying !== localFlying) {
-      localStorage.setItem('flying_' + TODAY, sheetsFlying ? '1' : '0');
+  try {
+    const flyingKey = 'flying_' + TODAY;
+    const res = await gasCall({ action: 'get_setting', key: flyingKey });
+    console.log('Flying from Sheets:', res);
+    if (res.ok) {
+      const sheetsVal = String(res.value || '0').trim();
+      const sheetsFlying = sheetsVal === '1';
+      // Always apply Sheets value — it's the master
+      localStorage.setItem(flyingKey, sheetsFlying ? '1' : '0');
       applyFlyingMode(sheetsFlying);
     }
+  } catch(e) {
+    console.warn('Flying mode sync failed:', e);
   }
 }
 
