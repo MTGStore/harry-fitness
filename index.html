@@ -2513,7 +2513,10 @@ const CAL_BONUS_FLYING = 300; // extra calories burned on flight day
 function toggleFlyingMode() {
   const isFlying = document.getElementById('flying-toggle').checked;
   localStorage.setItem('flying_' + TODAY, isFlying ? '1' : '0');
+  // Sync to Google Sheets so all devices know
+  gasCall({ action: 'save_setting', key: 'flying_' + TODAY, value: isFlying ? '1' : '0' });
   applyFlyingMode(isFlying);
+  toast(isFlying ? '🛫 Flying mode ON — 14 cup water goal!' : '✈️ Flying mode OFF', isFlying ? '#0ea5e9' : '#6b7280');
 }
 
 function applyFlyingMode(isFlying) {
@@ -2555,9 +2558,19 @@ function isFlyingToday() {
   return localStorage.getItem('flying_' + TODAY) === '1';
 }
 
-function initFlyingMode() {
-  const isFlying = isFlyingToday();
-  applyFlyingMode(isFlying);
+async function initFlyingMode() {
+  // Check local first for instant display
+  const localFlying = isFlyingToday();
+  applyFlyingMode(localFlying);
+  // Then check Sheets to sync across devices
+  const res = await gasCall({ action: 'get_setting', key: 'flying_' + TODAY });
+  if (res.ok && res.value !== null) {
+    const sheetsFlying = res.value === '1' || res.value === true;
+    if (sheetsFlying !== localFlying) {
+      localStorage.setItem('flying_' + TODAY, sheetsFlying ? '1' : '0');
+      applyFlyingMode(sheetsFlying);
+    }
+  }
 }
 
 function refreshCalDisplay() {
