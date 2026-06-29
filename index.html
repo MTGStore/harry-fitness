@@ -1475,11 +1475,9 @@ async function deleteFood(id) {
 
 async function renderFoodLog() {
   const date = document.getElementById('food-date').value||TODAY;
-  // Always fetch fresh from Google Sheets
   showSync('⏳ Loading...','#d97706');
   const res = await gasCall({action:'get_food', date:date});
-  if (res.ok && res.entries) {
-    // Merge into local cache
+  if (res.ok && res.entries !== undefined) {
     const normalized = res.entries.map(e => ({...e, date: normalizeDate(e.date)}));
     const all = load('food').filter(e=>normalizeDate(e.date)!==date);
     const merged = all.concat(normalized);
@@ -2072,29 +2070,60 @@ function loadMyFoods() {
 }
 
 async function loadMyFoodsFromSheets() {
-  // Show local first for instant display
+  // Step 1: Show local immediately
   searchMyFoods();
-  // Always fetch from Sheets — it's the master
-  const res = await gasCall({ action: 'get_myfoods' });
-  console.log('My Foods from Sheets:', res);
-  if (res.ok) {
-    const sheetFoods = res.foods || [];
+
+  // Step 2: Get My Foods from Sheets
+  const mfRes = await gasCall({ action: 'get_myfoods' });
+  
+  // Step 3: Get ALL food log entries from Sheets to build My Foods
+  const allFoodRes = await gasCall({ action: 'get_food', date: '' }); // empty date = get all
+
+  // Step 4: Build My Foods from food log history
+  if (allFoodRes.ok && allFoodRes.entries && allFoodRes.entries.length > 0) {
+    const foodLog = allFoodRes.entries;
+    // Add each unique food to local My Foods
+    foodLog.forEach(e => {
+      if (e.name && e.cal) {
+        const db = loadMyFoods();
+        const key = e.name.toLowerCase().trim();
+        const exists = db.find(f => f.name.toLowerCase().trim() === key);
+        if (!exists) {
+          db.unshift({
+            name: e.name, serving: e.serving||'',
+            cal: Number(e.cal)||0, protein: Number(e.pro)||0,
+            carbs: Number(e.carb)||0, fat: Number(e.fat)||0,
+            lastUsed: normalizeDate(e.date)||TODAY, count: 1
+          });
+          localStorage.setItem('myfoods', JSON.stringify(db));
+        }
+      }
+    });
+  }
+
+  // Step 5: Merge with My Foods tab from Sheets
+  if (mfRes.ok) {
+    const sheetFoods = mfRes.foods || [];
     const local = loadMyFoods();
     if (sheetFoods.length > 0) {
-      // Sheets has data — merge with any local-only items
       const sheetNames = sheetFoods.map(f => f.name.toLowerCase().trim());
       const localOnly = local.filter(f => !sheetNames.includes(f.name.toLowerCase().trim()));
       const merged = [...sheetFoods, ...localOnly];
       localStorage.setItem('myfoods', JSON.stringify(merged));
-    } else if (local.length > 0) {
-      // Sheets empty but local has data — push local up to Sheets
-      local.forEach(f => {
-        gasCall({action:'save_myfood', name:f.name, serving:f.serving||'',
-          cal:f.cal, protein:f.protein||0, carbs:f.carbs||0, fat:f.fat||0, lastUsed:f.lastUsed||TODAY});
-      });
     }
-    searchMyFoods();
   }
+
+  // Step 6: Push all local My Foods to Sheets (sync up)
+  const finalDb = loadMyFoods();
+  if (finalDb.length > 0) {
+    finalDb.forEach(f => {
+      gasCall({action:'save_myfood', name:f.name, serving:f.serving||'',
+        cal:f.cal, protein:f.protein||0, carbs:f.carbs||0,
+        fat:f.fat||0, lastUsed:f.lastUsed||TODAY});
+    });
+  }
+
+  searchMyFoods();
 }
 
 function saveToMyFoods(item) {
