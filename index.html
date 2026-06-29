@@ -378,6 +378,53 @@ tr:last-child td { border-bottom: none; }
 
 
 
+
+/* ════ VIEWER MODE ════ */
+.viewer-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 99px; padding: 4px 12px;
+  font-size: 0.68rem; color: #fff; font-weight: 700;
+  margin-top: 6px;
+}
+body.viewer-mode .btn-primary,
+body.viewer-mode .btn-add-direct,
+body.viewer-mode .btn-ai,
+body.viewer-mode .scan-btn,
+body.viewer-mode .scan-manual-btn,
+body.viewer-mode .scan-use-btn,
+body.viewer-mode .myfoods-add-btn,
+body.viewer-mode .fav-chip-add,
+body.viewer-mode .water-add-btn,
+body.viewer-mode .water-reset-btn,
+body.viewer-mode .btn-danger,
+body.viewer-mode .btn-edit-food,
+body.viewer-mode .wcoach-log-btn,
+body.viewer-mode .wcoach-log-ex-btn,
+body.viewer-mode .wcoach-refresh,
+body.viewer-mode .flying-switch,
+body.viewer-mode #manual-upc,
+body.viewer-mode .scan-manual-upc,
+body.viewer-mode .ai-search-wrap,
+body.viewer-mode .myfoods-search-wrap input,
+body.viewer-mode .lock-btn { 
+  display: none !important; 
+}
+body.viewer-mode input,
+body.viewer-mode select,
+body.viewer-mode textarea {
+  pointer-events: none;
+  opacity: 0.7;
+  background: var(--surface) !important;
+}
+body.viewer-mode .card-title::after {
+  content: ' 👁️ View Only';
+  font-size: 0.6rem;
+  color: var(--accent);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
 /* ════ FLYING MODE ════ */
 .flying-toggle-card {
   background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
@@ -710,6 +757,7 @@ input:checked + .flying-slider:before { transform: translateX(26px); }
   <div class="login-sub">Private · Secure · Yours alone</div>
   <div class="login-box">
     <div class="login-label">Enter PIN to continue</div>
+    <div style="font-size:0.62rem;color:rgba(255,255,255,0.3);text-align:center;margin-top:-10px;margin-bottom:14px">Owner or Viewer PIN</div>
     <div class="pin-dots">
       <div class="pin-dot" id="d0"></div><div class="pin-dot" id="d1"></div>
       <div class="pin-dot" id="d2"></div><div class="pin-dot" id="d3"></div>
@@ -765,6 +813,7 @@ input:checked + .flying-slider:before { transform: translateX(26px); }
         <div class="dash-greeting" id="dash-greeting">Good morning,</div>
         <div class="dash-name">Harry 👋</div>
         <div id="sync-status" style="font-size:0.65rem;color:rgba(255,255,255,0.6);margin-top:2px">Connecting to Google Sheets...</div>
+        <div id="viewer-badge" class="viewer-badge" style="display:none">👁️ View Only Mode</div>
       </div>
       <button class="lock-btn" onclick="logout()">🔒 Lock</button>
     </div>
@@ -1305,6 +1354,8 @@ async function callAI(messages, max_tokens) {
 //  CONSTANTS
 // ══════════════════════════════════════
 const CORRECT_PIN = '7381';
+const VIEWER_PIN = '9091';
+let IS_VIEWER = false;
 // Key is split to avoid GitHub secret scanning — reassembled at runtime
 // Google Apps Script Web App URL
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbwbNle5ivm-DVcY4Wm6kxRjDShPHRc0HBU_Y5sqiDyZpestnQog3e12SPbPXMxdXx-9/exec';
@@ -2509,6 +2560,32 @@ async function addFavorite(idx) {
 }
 
 
+
+
+// ══════════════════════════════════════
+//  VIEWER MODE
+// ══════════════════════════════════════
+function applyViewerMode() {
+  document.body.classList.add('viewer-mode');
+  // Show viewer badge
+  const badge = document.getElementById('viewer-badge');
+  if (badge) badge.style.display = 'inline-flex';
+  // Change lock button to just show mode
+  const lockBtn = document.querySelector('.lock-btn');
+  if (lockBtn) {
+    lockBtn.style.display = 'flex';
+    lockBtn.textContent = '👁️ Viewing';
+    lockBtn.style.background = 'rgba(255,255,255,0.1)';
+    lockBtn.style.cursor = 'default';
+    lockBtn.onclick = null;
+  }
+  // Change greeting
+  const greeting = document.getElementById('dash-greeting');
+  if (greeting) greeting.textContent = 'Viewing journey of';
+  // Hide flying toggle
+  const flyingCard = document.querySelector('.flying-toggle-card');
+  if (flyingCard) flyingCard.style.display = 'none';
+}
 
 // ══════════════════════════════════════
 //  FLYING MODE
