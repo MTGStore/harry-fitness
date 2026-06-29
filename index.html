@@ -1481,12 +1481,14 @@ function updateDots() {
   }
 }
 function checkPin() {
-  if (pinEntry === CORRECT_PIN) {
+  if (pinEntry === CORRECT_PIN || pinEntry === VIEWER_PIN) {
+    IS_VIEWER = (pinEntry === VIEWER_PIN);
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('bottom-nav').classList.add('show');
     setDates();
     showScreen('dashboard');
     loadAICoach();
+    if (IS_VIEWER) applyViewerMode();
     // Test GAS connection
     gasCall({action:'ping'}).then(r=>{
       showSync(r.ok ? '✅ Google Sheets connected' : '⚠️ Sheets offline', r.ok ? '#00a878' : '#d97706');
